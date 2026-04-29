@@ -1,7 +1,11 @@
 const { err } = require('../utils/responseHelper');
+const { normalizePhone, isValidLiberiaPhone } = require('../utils/phoneNormalizer');
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const validateSignup = (req, res, next) => {
-  const { name, phone, email, password } = req.body;
+  const { name, password } = req.body;
+  let { phone, email } = req.body;
   const missing = [];
 
   if (!name || !name.trim()) missing.push('name');
@@ -17,16 +21,25 @@ const validateSignup = (req, res, next) => {
     return err(res, 'Password must be at least 6 characters long.', 400);
   }
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  if (!emailRegex.test(email)) {
+  if (!EMAIL_REGEX.test(email.trim())) {
     return err(res, 'Please provide a valid email address.', 400);
   }
+
+  const normalized = normalizePhone(phone);
+  if (!isValidLiberiaPhone(normalized)) {
+    return err(res, 'Please provide a valid Liberia phone number.', 400);
+  }
+
+  // Normalize in-place so controllers receive clean values
+  req.body.phone = normalized;
+  req.body.email = email.trim().toLowerCase();
 
   next();
 };
 
 const validateLogin = (req, res, next) => {
-  const { identifier, password } = req.body;
+  const { password } = req.body;
+  let { identifier } = req.body;
 
   if (!identifier || !identifier.trim()) {
     return err(res, 'Phone number or email is required.', 400);
@@ -34,6 +47,37 @@ const validateLogin = (req, res, next) => {
 
   if (!password) {
     return err(res, 'Password is required.', 400);
+  }
+
+  // Normalize identifier before it reaches the controller
+  const trimmed = identifier.trim();
+  req.body.identifier = EMAIL_REGEX.test(trimmed)
+    ? trimmed.toLowerCase()
+    : normalizePhone(trimmed);
+
+  next();
+};
+
+const validateOTPVerify = (req, res, next) => {
+  const { otp } = req.body;
+
+  if (!otp || !/^\d{4}$/.test(String(otp).trim())) {
+    return err(res, 'A valid 4-digit OTP is required.', 400);
+  }
+
+  req.body.otp = String(otp).trim();
+  next();
+};
+
+const validateResetPassword = (req, res, next) => {
+  const { resetToken, newPassword } = req.body;
+
+  if (!resetToken || !resetToken.trim()) {
+    return err(res, 'resetToken is required.', 400);
+  }
+
+  if (!newPassword || newPassword.length < 6) {
+    return err(res, 'newPassword must be at least 6 characters.', 400);
   }
 
   next();
@@ -67,4 +111,10 @@ const validateOrder = (req, res, next) => {
   next();
 };
 
-module.exports = { validateSignup, validateLogin, validateOrder };
+module.exports = {
+  validateSignup,
+  validateLogin,
+  validateOTPVerify,
+  validateResetPassword,
+  validateOrder,
+};

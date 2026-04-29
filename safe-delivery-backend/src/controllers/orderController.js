@@ -164,12 +164,16 @@ exports.acceptOrder = async (req, res, next) => {
 
     await order.populate('customerId', 'name fcmToken');
 
-    const eta = Math.ceil(order.distanceMiles * 3); // rough ETA in minutes
+    // Fetch full rider info including profile photo for customer
+    const riderInfo = await Rider.findById(req.user._id)
+      .select('name phone vehicle profilePhoto rating');
+
+    const eta = Math.ceil(order.distanceMiles * 3);
     if (order.customerId.fcmToken) {
       await notifyRiderFound(order.customerId.fcmToken, req.user.name, eta).catch(console.error);
     }
 
-    return ok(res, { order }, 'Order accepted.');
+    return ok(res, { order, rider: riderInfo }, 'Order accepted.');
   } catch (error) {
     next(error);
   }
@@ -313,13 +317,7 @@ exports.verifyDeliveryOTP = async (req, res, next) => {
     order.paymentStatus = 'collected';
     await order.save();
 
-    // Update rider earnings and trip count
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
     const rider = await Rider.findById(req.user._id);
-
-    // Reset today's earnings if it's a new day (simple approach)
     rider.earnings.today = (rider.earnings.today || 0) + order.fare;
     rider.earnings.total = (rider.earnings.total || 0) + order.fare;
     rider.totalTrips = (rider.totalTrips || 0) + 1;
@@ -372,7 +370,7 @@ exports.cancelOrder = async (req, res, next) => {
 exports.getMyOrders = async (req, res, next) => {
   try {
     const orders = await Order.find({ customerId: req.user._id })
-      .populate('riderId', 'name phone vehicle')
+      .populate('riderId', 'name phone vehicle profilePhoto rating')
       .sort({ createdAt: -1 });
 
     return ok(res, { orders }, 'Orders fetched.');
@@ -387,11 +385,10 @@ exports.getOrder = async (req, res, next) => {
   try {
     const order = await Order.findById(req.params.id)
       .populate('customerId', 'name phone email')
-      .populate('riderId', 'name phone vehicle rating');
+      .populate('riderId', 'name phone vehicle profilePhoto rating');
 
     if (!order) return err(res, 'Order not found.', 404);
 
-    // Access control
     if (
       req.role === 'customer' && order.customerId._id.toString() !== req.user._id.toString()
     ) {

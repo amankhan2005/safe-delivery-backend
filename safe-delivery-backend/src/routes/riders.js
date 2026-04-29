@@ -12,9 +12,10 @@ const {
   getRiderOrders,
   getRiderProfile,
   updateRiderProfile,
+  uploadProfilePhoto,
 } = require('../controllers/riderController');
 const { protect, isRider } = require('../middleware/auth');
-const { uploadKYC } = require('../middleware/upload');
+const { uploadKYC, uploadPhoto } = require('../middleware/upload');
 
 router.post('/kyc/step1', protect, isRider, kycStep1);
 router.post('/kyc/step2', protect, isRider, uploadKYC, kycStep2);
@@ -28,5 +29,6 @@ router.get('/earnings', protect, isRider, getEarnings);
 router.get('/orders', protect, isRider, getRiderOrders);
 router.get('/profile', protect, isRider, getRiderProfile);
 router.put('/profile', protect, isRider, updateRiderProfile);
+router.post('/profile/photo', protect, isRider, uploadPhoto, uploadProfilePhoto);
 
 module.exports = router;

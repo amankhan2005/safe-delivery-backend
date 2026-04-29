@@ -25,4 +25,13 @@ const orderPhotoStorage = new CloudinaryStorage({
   },
 });
 
-module.exports = { cloudinary, kycStorage, orderPhotoStorage };
+const selfieStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'safe-delivery/selfies',
+    allowed_formats: ['jpg', 'jpeg', 'png'],
+    transformation: [{ quality: 'auto', fetch_format: 'auto', width: 800, crop: 'limit' }],
+  },
+});
+
+module.exports = { cloudinary, kycStorage, orderPhotoStorage, selfieStorage };

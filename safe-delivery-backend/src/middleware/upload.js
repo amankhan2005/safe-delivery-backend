@@ -1,5 +1,6 @@
 const multer = require('multer');
-const { kycStorage, orderPhotoStorage } = require('../config/cloudinary');
+const { kycStorage, orderPhotoStorage, selfieStorage } = require('../config/cloudinary');
+const { err } = require('../utils/responseHelper');
 
 const FILE_SIZE_LIMIT = 5 * 1024 * 1024; // 5MB
 
@@ -42,4 +43,38 @@ const uploadPhoto = multer({
   fileFilter: photoFilter,
 }).single('photo');
 
-module.exports = { uploadKYC, uploadPhoto };
+/**
+ * Selfie upload middleware — single image via Cloudinary selfie storage.
+ * Enforces camera-only capture by requiring the X-Capture-Source: camera header.
+ * The mobile client MUST set this header only when using the device camera API
+ * (e.g. via ImagePicker with mediaTypes=camera or Android/iOS camera intent).
+ */
+const _selfieMulter = multer({
+  storage: selfieStorage,
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (!file.mimetype.startsWith('image/')) {
+      return cb(new Error('Selfie must be an image file.'), false);
+    }
+    cb(null, true);
+  },
+}).single('selfie');
+
+const uploadSelfie = (req, res, next) => {
+  // Require the camera-capture header set by the mobile app
+  const captureSource = req.headers['x-capture-source'];
+  if (!captureSource || captureSource.toLowerCase() !== 'camera') {
+    return err(
+      res,
+      'Selfie must be taken using the device camera. Gallery uploads are not allowed.',
+      400
+    );
+  }
+
+  _selfieMulter(req, res, (multerErr) => {
+    if (multerErr) return next(multerErr);
+    next();
+  });
+};
+
+module.exports = { uploadKYC, uploadPhoto, uploadSelfie };

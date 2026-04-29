@@ -236,3 +236,27 @@ exports.updateRiderProfile = async (req, res, next) => {
     next(error);
   }
 };
+
+exports.uploadProfilePhoto = async (req, res, next) => {
+  try {
+    if (!req.file) return err(res, 'Profile photo is required.', 400);
+
+    const rider = await Rider.findById(req.user._id);
+
+    // Delete old photo from Cloudinary if exists
+    if (rider.profilePhoto && rider.profilePhoto.publicId) {
+      const { cloudinary } = require('../config/cloudinary');
+      await cloudinary.uploader.destroy(rider.profilePhoto.publicId).catch(console.error);
+    }
+
+    rider.profilePhoto = {
+      url: req.file.path,
+      publicId: req.file.filename,
+    };
+    await rider.save();
+
+    return ok(res, { profilePhoto: rider.profilePhoto }, 'Profile photo updated.');
+  } catch (error) {
+    next(error);
+  }
+};

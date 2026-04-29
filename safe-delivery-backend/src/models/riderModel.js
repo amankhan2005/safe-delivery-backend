@@ -54,6 +54,15 @@ const riderSchema = new mongoose.Schema(
       license: { url: String, publicId: String },
       rcBook: { url: String, publicId: String },
     },
+    selfie: {
+      url: { type: String },
+      publicId: { type: String },
+      capturedAt: { type: Date },
+    },
+    profilePhoto: {
+      url: { type: String, default: null },
+      publicId: { type: String, default: null },
+    },
     currentLocation: {
       lat: { type: Number },
       lng: { type: Number },

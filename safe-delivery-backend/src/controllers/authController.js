@@ -2,41 +2,37 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/userModel');
 const Rider = require('../models/riderModel');
 const { generateOTP, saveOTP, verifyOTP, checkCooldown } = require('../utils/otpGenerator');
+const { normalizePhone } = require('../utils/phoneNormalizer');
+const { isEmail, findUserByIdentifier, findRiderByIdentifier, generateAndSendOTP } = require('../utils/authHelpers');
 const { sendOTPSms, resendOTPSms, sendResetOTPSms } = require('../services/smsService');
 const { sendOTPEmail, sendWelcomeEmail, sendPasswordResetEmail } = require('../services/emailService');
 const { ok, err } = require('../utils/responseHelper');
 
-const signToken = (id, role) => {
-  return jwt.sign({ id, role }, process.env.JWT_SECRET, {
+const signToken = (id, role) =>
+  jwt.sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
-};
 
-const signResetToken = (id, role) => {
-  return jwt.sign({ id, role, purpose: 'reset' }, process.env.JWT_SECRET, { expiresIn: '15m' });
-};
+const signResetToken = (id, role) =>
+  jwt.sign({ id, role, purpose: 'reset' }, process.env.JWT_SECRET, { expiresIn: '15m' });
 
-// ─── CUSTOMER AUTH ─────────────────────────────────────────────
+// ─── CUSTOMER AUTH ──────────────────────────────────────────────
 
 exports.signup = async (req, res, next) => {
   try {
+    // phone + email are already normalized by validateSignup middleware
     const { name, phone, email, password } = req.body;
 
-    const existingPhone = await User.findOne({ phone });
-    if (existingPhone) return err(res, 'Phone number is already registered.', 400);
+    if (await User.findOne({ phone })) {
+      return err(res, 'Phone number is already registered.', 400);
+    }
+    if (await User.findOne({ email })) {
+      return err(res, 'Email address is already registered.', 400);
+    }
 
-    const existingEmail = await User.findOne({ email: email.toLowerCase() });
-    if (existingEmail) return err(res, 'Email address is already registered.', 400);
+    const user = await User.create({ name, phone, email, password });
 
-    const user = await User.create({ name, phone, email: email.toLowerCase(), password });
-
-    const phoneOTP = generateOTP();
-    const emailOTP = generateOTP();
-    await saveOTP(phone, phoneOTP, 'phone');
-    await saveOTP(email.toLowerCase(), emailOTP, 'email');
-
-    await sendOTPSms(phone, phoneOTP);
-    await sendOTPEmail(email, name, emailOTP, 'email');
+    await generateAndSendOTP(phone, 'phone', { email, name });
 
     return ok(res, { userId: user._id }, 'Account created. Check your phone and email for verification codes.', 201);
   } catch (error) {
@@ -53,7 +49,7 @@ exports.verifyPhoneOTP = async (req, res, next) => {
     if (!user) return err(res, 'User not found.', 404);
 
     const result = await verifyOTP(user.phone, otp, 'phone');
-    if (!result.success) return err(res, result.message, 400);
+    if (!result.success) return err(res, result.message, result.blocked ? 429 : 400);
 
     user.isPhoneVerified = true;
     await user.save();
@@ -78,7 +74,7 @@ exports.verifyEmailOTP = async (req, res, next) => {
     if (!user) return err(res, 'User not found.', 404);
 
     const result = await verifyOTP(user.email, otp, 'email');
-    if (!result.success) return err(res, result.message, 400);
+    if (!result.success) return err(res, result.message, result.blocked ? 429 : 400);
 
     user.isEmailVerified = true;
     await user.save();
@@ -96,27 +92,31 @@ exports.verifyEmailOTP = async (req, res, next) => {
 
 exports.resendOTP = async (req, res, next) => {
   try {
-    const { identifier, type, userId } = req.body;
+    let { identifier, type, userId } = req.body;
     if (!identifier || !type) return err(res, 'identifier and type are required.', 400);
     if (!['phone', 'email'].includes(type)) return err(res, 'type must be phone or email.', 400);
 
-    const cooldown = await checkCooldown(identifier, type);
+    const normalizedIdentifier = type === 'phone'
+      ? normalizePhone(identifier)
+      : identifier.trim().toLowerCase();
+
+    const cooldown = await checkCooldown(normalizedIdentifier, type);
     if (!cooldown.canResend) {
       return err(res, `Please wait ${cooldown.secondsLeft} seconds before resending.`, 429);
     }
 
     const otp = generateOTP();
-    await saveOTP(identifier, otp, type);
+    await saveOTP(normalizedIdentifier, otp, type);
 
     if (type === 'phone') {
-      await resendOTPSms(identifier, otp);
+      await resendOTPSms(normalizedIdentifier, otp);
     } else {
       let name = 'User';
       if (userId) {
         const user = await User.findById(userId);
         if (user) name = user.name;
       }
-      await sendOTPEmail(identifier, name, otp, 'email');
+      await sendOTPEmail(normalizedIdentifier, name, otp, 'email');
     }
 
     return ok(res, {}, 'OTP resent successfully.');
@@ -127,12 +127,10 @@ exports.resendOTP = async (req, res, next) => {
 
 exports.login = async (req, res, next) => {
   try {
+    // identifier already normalized by validateLogin middleware
     const { identifier, password } = req.body;
 
-    const isEmail = identifier.includes('@');
-    const query = isEmail ? { email: identifier.toLowerCase() } : { phone: identifier };
-    const user = await User.findOne(query).select('+password');
-
+    const user = await findUserByIdentifier(identifier, true);
     if (!user || !(await user.matchPassword(password))) {
       return err(res, 'Invalid credentials.', 401);
     }
@@ -158,11 +156,15 @@ exports.login = async (req, res, next) => {
 
 exports.sendLoginOTP = async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
 
     const user = await User.findOne({ phone });
     if (!user) return err(res, 'No account found with this phone number.', 404);
+
+    if (!user.isPhoneVerified) {
+      return err(res, 'Please verify your phone number first before using OTP login.', 403);
+    }
 
     const cooldown = await checkCooldown(phone, 'login');
     if (!cooldown.canResend) {
@@ -181,14 +183,15 @@ exports.sendLoginOTP = async (req, res, next) => {
 
 exports.verifyLoginOTP = async (req, res, next) => {
   try {
-    const { phone, otp } = req.body;
+    const phone = normalizePhone(req.body.phone);
+    const { otp } = req.body;
     if (!phone || !otp) return err(res, 'phone and otp are required.', 400);
 
     const user = await User.findOne({ phone });
     if (!user) return err(res, 'No account found with this phone number.', 404);
 
     const result = await verifyOTP(phone, otp, 'login');
-    if (!result.success) return err(res, result.message, 400);
+    if (!result.success) return err(res, result.message, result.blocked ? 429 : 400);
 
     if (user.isFirstLogin) {
       await sendWelcomeEmail(user.email, user.name).catch(console.error);
@@ -208,8 +211,11 @@ exports.verifyLoginOTP = async (req, res, next) => {
 
 exports.resendLoginOTP = async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
+
+    const user = await User.findOne({ phone });
+    if (!user) return err(res, 'No account found with this phone number.', 404);
 
     const cooldown = await checkCooldown(phone, 'login');
     if (!cooldown.canResend) {
@@ -228,7 +234,7 @@ exports.resendLoginOTP = async (req, res, next) => {
 
 exports.forgotPassword = async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
 
     const user = await User.findOne({ phone });
@@ -252,7 +258,7 @@ exports.forgotPassword = async (req, res, next) => {
 
 exports.resendForgotOTP = async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
 
     const user = await User.findOne({ phone });
@@ -275,15 +281,17 @@ exports.resendForgotOTP = async (req, res, next) => {
 
 exports.verifyResetOTP = async (req, res, next) => {
   try {
-    const { phone, otp } = req.body;
+    const phone = normalizePhone(req.body.phone);
+    const { otp } = req.body;
     if (!phone || !otp) return err(res, 'phone and otp are required.', 400);
 
     const user = await User.findOne({ phone });
     if (!user) return err(res, 'No account found.', 404);
 
     const result = await verifyOTP(phone, otp, 'reset');
-    if (!result.success) return err(res, result.message, 400);
+    if (!result.success) return err(res, result.message, result.blocked ? 429 : 400);
 
+    // OTP deleted on success — reuse impossible
     const resetToken = signResetToken(user._id, user.role);
     return ok(res, { resetToken }, 'OTP verified. Use resetToken to set a new password.');
   } catch (error) {
@@ -293,9 +301,8 @@ exports.verifyResetOTP = async (req, res, next) => {
 
 exports.resetPassword = async (req, res, next) => {
   try {
+    // Validated by validateResetPassword middleware
     const { resetToken, newPassword } = req.body;
-    if (!resetToken || !newPassword) return err(res, 'resetToken and newPassword are required.', 400);
-    if (newPassword.length < 6) return err(res, 'Password must be at least 6 characters.', 400);
 
     let decoded;
     try {
@@ -305,6 +312,7 @@ exports.resetPassword = async (req, res, next) => {
     }
 
     if (decoded.purpose !== 'reset') return err(res, 'Invalid reset token.', 400);
+    if (decoded.role === 'rider') return err(res, 'Invalid reset token for this account type.', 400);
 
     const user = await User.findById(decoded.id);
     if (!user) return err(res, 'User not found.', 404);
@@ -360,19 +368,36 @@ exports.saveFcmToken = async (req, res, next) => {
   }
 };
 
-// ─── RIDER AUTH ─────────────────────────────────────────────────
+// ─── RIDER AUTH ──────────────────────────────────────────────────
 
 exports.riderSignup = async (req, res, next) => {
   try {
+    // phone + email normalized by validateSignup middleware
     const { name, phone, email, password } = req.body;
 
-    const existingPhone = await Rider.findOne({ phone });
-    if (existingPhone) return err(res, 'Phone number is already registered.', 400);
+    // Check selfie first — avoids leaking whether phone/email is registered
+    if (!req.file) {
+      return err(res, 'A live selfie photo is required to create a rider account.', 400);
+    }
 
-    const existingEmail = await Rider.findOne({ email: email.toLowerCase() });
-    if (existingEmail) return err(res, 'Email address is already registered.', 400);
+    if (await Rider.findOne({ phone })) {
+      return err(res, 'Phone number is already registered.', 400);
+    }
+    if (await Rider.findOne({ email })) {
+      return err(res, 'Email address is already registered.', 400);
+    }
 
-    const rider = await Rider.create({ name, phone, email: email.toLowerCase(), password });
+    const rider = await Rider.create({
+      name,
+      phone,
+      email,
+      password,
+      selfie: {
+        url: req.file.path,
+        publicId: req.file.filename,
+        capturedAt: new Date(),
+      },
+    });
 
     const otp = generateOTP();
     await saveOTP(phone, otp, 'phone');
@@ -393,7 +418,7 @@ exports.riderVerifyPhoneOTP = async (req, res, next) => {
     if (!rider) return err(res, 'Rider not found.', 404);
 
     const result = await verifyOTP(rider.phone, otp, 'phone');
-    if (!result.success) return err(res, result.message, 400);
+    if (!result.success) return err(res, result.message, result.blocked ? 429 : 400);
 
     rider.isPhoneVerified = true;
     await rider.save();
@@ -407,8 +432,11 @@ exports.riderVerifyPhoneOTP = async (req, res, next) => {
 
 exports.riderResendOTP = async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
+
+    const rider = await Rider.findOne({ phone });
+    if (!rider) return err(res, 'No rider account found with this phone number.', 404);
 
     const cooldown = await checkCooldown(phone, 'phone');
     if (!cooldown.canResend) {
@@ -427,18 +455,15 @@ exports.riderResendOTP = async (req, res, next) => {
 
 exports.riderLogin = async (req, res, next) => {
   try {
+    // identifier already normalized by validateLogin middleware
     const { identifier, password } = req.body;
 
-    const isEmail = identifier.includes('@');
-    const query = isEmail ? { email: identifier.toLowerCase() } : { phone: identifier };
-    const rider = await Rider.findOne(query).select('+password');
-
+    const rider = await findRiderByIdentifier(identifier, true);
     if (!rider || !(await rider.matchPassword(password))) {
       return err(res, 'Invalid credentials.', 401);
     }
 
     if (!rider.isPhoneVerified) return err(res, 'Please verify your phone number first.', 403);
-
     if (rider.status === 'banned') return err(res, 'Your account has been banned. Contact support.', 403);
     if (rider.status === 'rejected') return err(res, 'Your application was rejected. Contact support.', 403);
 
@@ -454,7 +479,7 @@ exports.riderLogin = async (req, res, next) => {
 
 exports.riderSendLoginOTP = async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
 
     const rider = await Rider.findOne({ phone });
@@ -477,14 +502,15 @@ exports.riderSendLoginOTP = async (req, res, next) => {
 
 exports.riderVerifyLoginOTP = async (req, res, next) => {
   try {
-    const { phone, otp } = req.body;
+    const phone = normalizePhone(req.body.phone);
+    const { otp } = req.body;
     if (!phone || !otp) return err(res, 'phone and otp are required.', 400);
 
     const rider = await Rider.findOne({ phone });
     if (!rider) return err(res, 'Rider not found.', 404);
 
     const result = await verifyOTP(phone, otp, 'login');
-    if (!result.success) return err(res, result.message, 400);
+    if (!result.success) return err(res, result.message, result.blocked ? 429 : 400);
 
     if (rider.status === 'banned') return err(res, 'Your account has been banned.', 403);
 
@@ -500,8 +526,11 @@ exports.riderVerifyLoginOTP = async (req, res, next) => {
 
 exports.riderResendLoginOTP = async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
+
+    const rider = await Rider.findOne({ phone });
+    if (!rider) return err(res, 'No rider account found with this phone number.', 404);
 
     const cooldown = await checkCooldown(phone, 'login');
     if (!cooldown.canResend) {
@@ -520,7 +549,7 @@ exports.riderResendLoginOTP = async (req, res, next) => {
 
 exports.riderForgotPassword = async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
 
     const rider = await Rider.findOne({ phone });
@@ -543,8 +572,11 @@ exports.riderForgotPassword = async (req, res, next) => {
 
 exports.riderResendForgotOTP = async (req, res, next) => {
   try {
-    const { phone } = req.body;
+    const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
+
+    const rider = await Rider.findOne({ phone });
+    if (!rider) return err(res, 'No rider account found with this phone number.', 404);
 
     const cooldown = await checkCooldown(phone, 'reset');
     if (!cooldown.canResend) {
@@ -563,15 +595,17 @@ exports.riderResendForgotOTP = async (req, res, next) => {
 
 exports.riderVerifyResetOTP = async (req, res, next) => {
   try {
-    const { phone, otp } = req.body;
+    const phone = normalizePhone(req.body.phone);
+    const { otp } = req.body;
     if (!phone || !otp) return err(res, 'phone and otp are required.', 400);
 
     const rider = await Rider.findOne({ phone });
     if (!rider) return err(res, 'Rider not found.', 404);
 
     const result = await verifyOTP(phone, otp, 'reset');
-    if (!result.success) return err(res, result.message, 400);
+    if (!result.success) return err(res, result.message, result.blocked ? 429 : 400);
 
+    // OTP deleted on success — reuse impossible
     const resetToken = signResetToken(rider._id, 'rider');
     return ok(res, { resetToken }, 'OTP verified. Use resetToken to set a new password.');
   } catch (error) {
@@ -581,9 +615,8 @@ exports.riderVerifyResetOTP = async (req, res, next) => {
 
 exports.riderResetPassword = async (req, res, next) => {
   try {
+    // Validated by validateResetPassword middleware
     const { resetToken, newPassword } = req.body;
-    if (!resetToken || !newPassword) return err(res, 'resetToken and newPassword are required.', 400);
-    if (newPassword.length < 6) return err(res, 'Password must be at least 6 characters.', 400);
 
     let decoded;
     try {
