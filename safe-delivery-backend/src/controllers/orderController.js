@@ -370,7 +370,7 @@ exports.cancelOrder = async (req, res, next) => {
 exports.getMyOrders = async (req, res, next) => {
   try {
     const orders = await Order.find({ customerId: req.user._id })
-      .populate('riderId', 'name phone vehicle profilePhoto rating')
+      .populate('riderId', 'name phone vehicle profilePhoto rating currentLocation')
       .sort({ createdAt: -1 });
 
     return ok(res, { orders }, 'Orders fetched.');
