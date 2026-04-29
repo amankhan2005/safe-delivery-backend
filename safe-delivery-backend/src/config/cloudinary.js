@@ -1,0 +1,28 @@
+const cloudinary = require('cloudinary').v2;
+const { CloudinaryStorage } = require('multer-storage-cloudinary');
+
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET,
+});
+
+const kycStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'safe-delivery/kyc',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'pdf'],
+    transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+  },
+});
+
+const orderPhotoStorage = new CloudinaryStorage({
+  cloudinary,
+  params: {
+    folder: 'safe-delivery/order-photos',
+    allowed_formats: ['jpg', 'jpeg', 'png'],
+    transformation: [{ quality: 'auto', fetch_format: 'auto' }],
+  },
+});
+
+module.exports = { cloudinary, kycStorage, orderPhotoStorage };
