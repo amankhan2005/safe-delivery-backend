@@ -47,12 +47,16 @@ exports.getDashboard = async (req, res, next) => {
       totalCustomers,
       totalOrders,
       todayOrders,
+      onlineRiders,
+      offlineRiders,
     ] = await Promise.all([
       Rider.countDocuments(),
       Rider.countDocuments({ status: 'pending' }),
       User.countDocuments({ role: 'customer' }),
       Order.countDocuments(),
       Order.find({ createdAt: { $gte: today } }).select('fare status'),
+      Rider.countDocuments({ status: 'approved', isOnline: true }),
+      Rider.countDocuments({ status: 'approved', isOnline: false }),
     ]);
 
     const todayDeliveries = todayOrders.filter((o) => o.status === 'delivered').length;
@@ -84,6 +88,8 @@ exports.getDashboard = async (req, res, next) => {
     return ok(res, {
       totalRiders,
       pendingApprovals,
+      onlineRiders,
+      offlineRiders,
       totalCustomers,
       totalOrders,
       todayDeliveries,
@@ -131,6 +137,10 @@ exports.approveRider = async (req, res, next) => {
     const rider = await Rider.findById(req.params.id);
     if (!rider) return err(res, 'Rider not found.', 404);
 
+    if (rider.status === 'approved') {
+      return err(res, 'Rider is already approved.', 400);
+    }
+
     rider.status = 'approved';
     rider.approvedAt = new Date();
     rider.rejectionReason = undefined;
@@ -156,6 +166,10 @@ exports.rejectRider = async (req, res, next) => {
     const rider = await Rider.findById(req.params.id);
     if (!rider) return err(res, 'Rider not found.', 404);
 
+    if (rider.status === 'rejected') {
+      return err(res, 'Rider is already rejected.', 400);
+    }
+
     rider.status = 'rejected';
     rider.rejectedAt = new Date();
     rider.rejectionReason = reason;
@@ -176,6 +190,10 @@ exports.banRider = async (req, res, next) => {
   try {
     const rider = await Rider.findById(req.params.id);
     if (!rider) return err(res, 'Rider not found.', 404);
+
+    if (rider.status === 'banned') {
+      return err(res, 'Rider is already banned.', 400);
+    }
 
     rider.status = 'banned';
     rider.isOnline = false;
@@ -216,7 +234,7 @@ exports.getCustomerById = async (req, res, next) => {
     if (!customer) return err(res, 'Customer not found.', 404);
 
     const orders = await Order.find({ customerId: req.params.id })
-      .populate('riderId', 'name phone')
+      .populate('riderId', 'name phone profilePhoto')
       .sort({ createdAt: -1 })
       .limit(20);
 
@@ -238,7 +256,7 @@ exports.getOrders = async (req, res, next) => {
     const [orders, total] = await Promise.all([
       Order.find(filter)
         .populate('customerId', 'name phone email')
-        .populate('riderId', 'name phone vehicle')
+        .populate('riderId', 'name phone vehicle profilePhoto')
         .skip(skip)
         .limit(parseInt(limit))
         .sort({ createdAt: -1 }),
@@ -255,7 +273,7 @@ exports.getOrderById = async (req, res, next) => {
   try {
     const order = await Order.findById(req.params.id)
       .populate('customerId', 'name phone email')
-      .populate('riderId', 'name phone vehicle rating');
+      .populate('riderId', 'name phone vehicle profilePhoto rating');
 
     if (!order) return err(res, 'Order not found.', 404);
     return ok(res, { order }, 'Order fetched.');
