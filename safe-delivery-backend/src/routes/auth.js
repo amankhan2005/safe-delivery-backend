@@ -1,41 +1,9 @@
-const express = require('express');
-const router = express.Router();
-const {
-  signup,
-  verifyPhoneOTP,
-  verifyEmailOTP,
-  resendOTP,
-  login,
-  sendLoginOTP,
-  verifyLoginOTP,
-  resendLoginOTP,
-  forgotPassword,
-  resendForgotOTP,
-  verifyResetOTP,
-  resetPassword,
-  changePassword,
-  getMe,
-  saveFcmToken,
-  riderSignup,
-  riderVerifyPhoneOTP,
-  riderResendOTP,
-  riderLogin,
-  riderSendLoginOTP,
-  riderVerifyLoginOTP,
-  riderResendLoginOTP,
-  riderForgotPassword,
-  riderResendForgotOTP,
-  riderVerifyResetOTP,
-  riderResetPassword,
-} = require('../controllers/authController');
-const { protect } = require('../middleware/auth');
-const {
-  validateSignup,
-  validateLogin,
-  validateOTPVerify,
-  validateResetPassword,
-} = require('../middleware/validate');
-const { uploadSelfie } = require('../middleware/upload');
+import { Router } from 'express';
+const router = Router();
+import { signup, verifyPhoneOTP, verifyEmailOTP, resendOTP, login, sendLoginOTP, verifyLoginOTP, resendLoginOTP, forgotPassword, resendForgotOTP, verifyResetOTP, resetPassword, changePassword, getMe, saveFcmToken, riderSignup, riderVerifyPhoneOTP, riderResendOTP, riderLogin, riderSendLoginOTP, riderVerifyLoginOTP, riderResendLoginOTP, riderForgotPassword, riderResendForgotOTP, riderVerifyResetOTP, riderResetPassword } from '../controllers/authController.js';
+import { protect } from '../middleware/auth.js';
+import { validateSignup, validateLogin, validateOTPVerify, validateResetPassword } from '../middleware/validate.js';
+import { uploadSelfie } from '../middleware/upload.js';
 
 // ── Customer Auth
 router.post('/signup', validateSignup, signup);
@@ -68,4 +36,4 @@ router.post('/rider-resend-forgot-otp', riderResendForgotOTP);
 router.post('/rider-verify-reset-otp', validateOTPVerify, riderVerifyResetOTP);
 router.post('/rider-reset-password', validateResetPassword, riderResetPassword);
 
-module.exports = router;
+export default router;

@@ -1,7 +1,7 @@
-const { PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const { s3Client, bucketName } = require('../config/aws');
-const { v4: uuidv4 } = require('crypto');
-const path = require('path');
+import { PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { s3Client, bucketName } from '../config/aws';
+import { v4 as uuidv4 } from 'crypto';
+import { extname } from 'path';
 
 /**
  * Upload a file buffer to S3.
@@ -10,7 +10,7 @@ const path = require('path');
  * @returns {Promise<{ url: string, key: string }>}
  */
 const uploadToS3 = async (file, folder = 'uploads') => {
-  const ext = path.extname(file.originalname) || '.jpg';
+  const ext = extname(file.originalname) || '.jpg';
   const key = `${folder}/${Date.now()}-${Math.random().toString(36).substring(2)}${ext}`;
 
   const command = new PutObjectCommand({
@@ -42,4 +42,4 @@ const deleteFromS3 = async (key) => {
   }
 };
 
-module.exports = { uploadToS3, deleteFromS3 };
+export default { uploadToS3, deleteFromS3 };

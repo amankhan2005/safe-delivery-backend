@@ -1,21 +1,18 @@
-const User = require('../models/userModel');
-const Rider = require('../models/riderModel');
-const Order = require('../models/orderModel');
-const Pricing = require('../models/pricingModel');
-const Inquiry = require('../models/inquiryModel');
-const jwt = require('jsonwebtoken');
-const { ok, err } = require('../utils/responseHelper');
-const { sendApprovalSms, sendRejectionSms } = require('../services/smsService');
-const { sendRiderApprovedEmail } = require('../services/emailService');
-const {
-  notifyAccountApproved,
-  notifyAccountRejected,
-  push,
-} = require('../services/notificationService');
+import User from '../models/userModel.js';
+import Rider from '../models/riderModel.js';
+import Order from '../models/orderModel.js';
+import Pricing from '../models/pricingModel.js';
+import Inquiry from '../models/inquiryModel.js';
+import jwtPkg from 'jsonwebtoken';
+const { sign } = jwtPkg;
+import { ok, err } from '../utils/responseHelper.js';
+import { sendApprovalSms, sendRejectionSms } from '../services/smsService.js';
+import { sendRiderApprovedEmail } from '../services/emailService.js';
+import { notifyAccountApproved, notifyAccountRejected, push } from '../services/notificationService.js';
 
 // ─── LOGIN ───────────────────────────────────────────────────────
 
-exports.adminLogin = async (req, res, next) => {
+export async function adminLogin(req, res, next) {
   try {
     const { email, password } = req.body;
     if (!email || !password) return err(res, 'Email and password are required.', 400);
@@ -25,7 +22,7 @@ exports.adminLogin = async (req, res, next) => {
       return err(res, 'Invalid credentials.', 401);
     }
 
-    const token = jwt.sign({ id: user._id, role: 'admin' }, process.env.JWT_SECRET, {
+    const token = sign({ id: user._id, role: 'admin' }, process.env.JWT_SECRET, {
       expiresIn: process.env.JWT_EXPIRES_IN || '7d',
     });
 
@@ -33,11 +30,11 @@ exports.adminLogin = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── DASHBOARD ───────────────────────────────────────────────────
 
-exports.getDashboard = async (req, res, next) => {
+export async function getDashboard(req, res, next) {
   try {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -67,7 +64,6 @@ exports.getDashboard = async (req, res, next) => {
       .filter((o) => o.status === 'delivered')
       .reduce((sum, o) => sum + o.fare, 0);
 
-    // Weekly chart (last 7 days)
     const weeklyOrdersChart = [];
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
@@ -81,7 +77,6 @@ exports.getDashboard = async (req, res, next) => {
       weeklyOrdersChart.push({ date: date.toISOString().split('T')[0], count });
     }
 
-    // Order status breakdown
     const statusGroups = await Order.aggregate([
       { $group: { _id: '$status', count: { $sum: 1 } } },
     ]);
@@ -104,11 +99,11 @@ exports.getDashboard = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── RIDERS ──────────────────────────────────────────────────────
 
-exports.getRiders = async (req, res, next) => {
+export async function getRiders(req, res, next) {
   try {
     const { status, page = 1, limit = 20 } = req.query;
     const filter = {};
@@ -124,9 +119,9 @@ exports.getRiders = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.getRiderById = async (req, res, next) => {
+export async function getRiderById(req, res, next) {
   try {
     const rider = await Rider.findById(req.params.id);
     if (!rider) return err(res, 'Rider not found.', 404);
@@ -134,9 +129,9 @@ exports.getRiderById = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.approveRider = async (req, res, next) => {
+export async function approveRider(req, res, next) {
   try {
     const rider = await Rider.findById(req.params.id);
     if (!rider) return err(res, 'Rider not found.', 404);
@@ -160,9 +155,9 @@ exports.approveRider = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.rejectRider = async (req, res, next) => {
+export async function rejectRider(req, res, next) {
   try {
     const { reason } = req.body;
     if (!reason) return err(res, 'Rejection reason is required.', 400);
@@ -188,9 +183,9 @@ exports.rejectRider = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.banRider = async (req, res, next) => {
+export async function banRider(req, res, next) {
   try {
     const rider = await Rider.findById(req.params.id);
     if (!rider) return err(res, 'Rider not found.', 404);
@@ -205,18 +200,18 @@ exports.banRider = async (req, res, next) => {
     await rider.save();
 
     if (rider.fcmToken) {
-      await push(rider.fcmToken, '🚫 Account Banned', 'Your Safe Delivery account has been banned. Contact support for more information.').catch(console.error);
+      await push(rider.fcmToken, 'Account Banned', 'Your Safe Delivery account has been banned. Contact support for more information.').catch(console.error);
     }
 
     return ok(res, { status: rider.status }, 'Rider banned.');
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── CUSTOMERS ───────────────────────────────────────────────────
 
-exports.getCustomers = async (req, res, next) => {
+export async function getCustomers(req, res, next) {
   try {
     const { page = 1, limit = 20 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -230,9 +225,9 @@ exports.getCustomers = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.getCustomerById = async (req, res, next) => {
+export async function getCustomerById(req, res, next) {
   try {
     const customer = await User.findOne({ _id: req.params.id, role: 'customer' });
     if (!customer) return err(res, 'Customer not found.', 404);
@@ -246,11 +241,11 @@ exports.getCustomerById = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── ORDERS ──────────────────────────────────────────────────────
 
-exports.getOrders = async (req, res, next) => {
+export async function getOrders(req, res, next) {
   try {
     const { status, page = 1, limit = 20 } = req.query;
     const filter = {};
@@ -271,9 +266,9 @@ exports.getOrders = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.getOrderById = async (req, res, next) => {
+export async function getOrderById(req, res, next) {
   try {
     const order = await Order.findById(req.params.id)
       .populate('customerId', 'name phone email')
@@ -284,11 +279,11 @@ exports.getOrderById = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── PRICING ─────────────────────────────────────────────────────
 
-exports.getPricing = async (req, res, next) => {
+export async function getPricing(req, res, next) {
   try {
     const pricing = await Pricing.findOne().sort({ createdAt: -1 });
     if (!pricing) return err(res, 'No pricing found. Please set pricing first.', 404);
@@ -296,9 +291,9 @@ exports.getPricing = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.updatePricing = async (req, res, next) => {
+export async function updatePricing(req, res, next) {
   try {
     const { costPerMile } = req.body;
     if (costPerMile === undefined) return err(res, 'costPerMile is required.', 400);
@@ -320,9 +315,9 @@ exports.updatePricing = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.createPromoCode = async (req, res, next) => {
+export async function createPromoCode(req, res, next) {
   try {
     const { code, discount, type, expiresAt, usageLimit } = req.body;
 
@@ -351,9 +346,9 @@ exports.createPromoCode = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.deletePromoCode = async (req, res, next) => {
+export async function deletePromoCode(req, res, next) {
   try {
     const { code } = req.params;
 
@@ -370,11 +365,11 @@ exports.deletePromoCode = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── INQUIRIES ───────────────────────────────────────────────────
 
-exports.getInquiries = async (req, res, next) => {
+export async function getInquiries(req, res, next) {
   try {
     const { role, page = 1, limit = 20 } = req.query;
     const filter = {};
@@ -398,9 +393,9 @@ exports.getInquiries = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.getInquiryById = async (req, res, next) => {
+export async function getInquiryById(req, res, next) {
   try {
     const inquiry = await Inquiry.findById(req.params.id);
     if (!inquiry) return err(res, 'Inquiry not found.', 404);
@@ -408,4 +403,4 @@ exports.getInquiryById = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}

@@ -1,9 +1,9 @@
-const { err } = require('../utils/responseHelper');
-const { normalizePhone, isValidLiberiaPhone } = require('../utils/phoneNormalizer');
+import { err } from '../utils/responseHelper.js';
+import { normalizePhone, isValidLiberiaPhone } from '../utils/phoneNormalizer.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const validateSignup = (req, res, next) => {
+export const validateSignup = (req, res, next) => {
   const { name, password } = req.body;
   let { phone, email } = req.body;
   const missing = [];
@@ -30,14 +30,13 @@ const validateSignup = (req, res, next) => {
     return err(res, 'Please provide a valid Liberia phone number.', 400);
   }
 
-  // Normalize in-place so controllers receive clean values
   req.body.phone = normalized;
   req.body.email = email.trim().toLowerCase();
 
   next();
 };
 
-const validateLogin = (req, res, next) => {
+export const validateLogin = (req, res, next) => {
   const { password } = req.body;
   let { identifier } = req.body;
 
@@ -49,7 +48,6 @@ const validateLogin = (req, res, next) => {
     return err(res, 'Password is required.', 400);
   }
 
-  // Normalize identifier before it reaches the controller
   const trimmed = identifier.trim();
   req.body.identifier = EMAIL_REGEX.test(trimmed)
     ? trimmed.toLowerCase()
@@ -58,7 +56,7 @@ const validateLogin = (req, res, next) => {
   next();
 };
 
-const validateOTPVerify = (req, res, next) => {
+export const validateOTPVerify = (req, res, next) => {
   const { otp } = req.body;
 
   if (!otp || !/^\d{4}$/.test(String(otp).trim())) {
@@ -69,7 +67,7 @@ const validateOTPVerify = (req, res, next) => {
   next();
 };
 
-const validateResetPassword = (req, res, next) => {
+export const validateResetPassword = (req, res, next) => {
   const { resetToken, newPassword } = req.body;
 
   if (!resetToken || !resetToken.trim()) {
@@ -83,7 +81,7 @@ const validateResetPassword = (req, res, next) => {
   next();
 };
 
-const validateOrder = (req, res, next) => {
+export const validateOrder = (req, res, next) => {
   const { pickup, drop, parcelWeight } = req.body;
   const validWeights = ['<1lb', '1-5lb', '5-10lb', '>10lb'];
 
@@ -92,29 +90,33 @@ const validateOrder = (req, res, next) => {
 
   const pickupFields = ['address', 'lat', 'lng', 'contactName', 'contactPhone'];
   for (const field of pickupFields) {
-    if (pickup[field] === undefined || pickup[field] === null || pickup[field] === '') {
+    if (
+      pickup[field] === undefined ||
+      pickup[field] === null ||
+      pickup[field] === ''
+    ) {
       return err(res, `Pickup ${field} is required.`, 400);
     }
   }
 
   const dropFields = ['address', 'lat', 'lng', 'contactName', 'contactPhone'];
   for (const field of dropFields) {
-    if (drop[field] === undefined || drop[field] === null || drop[field] === '') {
+    if (
+      drop[field] === undefined ||
+      drop[field] === null ||
+      drop[field] === ''
+    ) {
       return err(res, `Drop ${field} is required.`, 400);
     }
   }
 
   if (!parcelWeight || !validWeights.includes(parcelWeight)) {
-    return err(res, `parcelWeight must be one of: ${validWeights.join(', ')}.`, 400);
+    return err(
+      res,
+      `parcelWeight must be one of: ${validWeights.join(', ')}.`,
+      400
+    );
   }
 
   next();
-};
-
-module.exports = {
-  validateSignup,
-  validateLogin,
-  validateOTPVerify,
-  validateResetPassword,
-  validateOrder,
 };

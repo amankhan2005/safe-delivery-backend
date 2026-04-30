@@ -1,8 +1,8 @@
-const express = require('express');
-const router = express.Router();
-const { sendNotification } = require('../controllers/notificationController');
-const { protect, isAdmin } = require('../middleware/auth');
+import { Router } from 'express';
+const router = Router();
+import { sendNotification } from '../controllers/notificationController.js';
+import { protect, isAdmin } from '../middleware/auth.js';
 
 router.post('/send', protect, isAdmin, sendNotification);
 
-module.exports = router;
+export default router;

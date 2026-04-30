@@ -1,8 +1,9 @@
-const admin = require('firebase-admin');
+import adminPkg from 'firebase-admin';
+const admin = adminPkg;
 
 let firebaseApp;
 
-const initializeFirebase = () => {
+export const initializeFirebase = () => {
   if (firebaseApp) return firebaseApp;
 
   try {
@@ -23,9 +24,7 @@ const initializeFirebase = () => {
   return firebaseApp;
 };
 
-const getMessaging = () => {
+export const getMessaging = () => {
   initializeFirebase();
   return admin.messaging();
 };
-
-module.exports = { initializeFirebase, getMessaging };

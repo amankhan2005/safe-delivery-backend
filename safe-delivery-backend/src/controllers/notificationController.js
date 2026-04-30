@@ -1,7 +1,7 @@
-const { push } = require('../services/notificationService');
-const { ok, err } = require('../utils/responseHelper');
+import { push } from '../services/notificationService.js';
+import { ok, err } from '../utils/responseHelper.js';
 
-exports.sendNotification = async (req, res, next) => {
+export async function sendNotification(req, res, next) {
   try {
     const { data } = req.body;
     const token = typeof req.body.token === 'string' ? req.body.token.trim() : null;
@@ -27,4 +27,4 @@ exports.sendNotification = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}

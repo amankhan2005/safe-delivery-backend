@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+import { Schema, model } from 'mongoose';
 
-const otpSchema = new mongoose.Schema(
+const otpSchema = new Schema(
   {
     identifier: {
       type: String,
@@ -36,4 +36,4 @@ const otpSchema = new mongoose.Schema(
 // Compound index for fast lookups
 otpSchema.index({ identifier: 1, type: 1 });
 
-module.exports = mongoose.model('OTP', otpSchema);
+export default model('OTP', otpSchema);

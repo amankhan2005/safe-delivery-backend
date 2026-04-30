@@ -1,4 +1,4 @@
-const { Resend } = require('resend');
+import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
@@ -264,4 +264,4 @@ const sendInquiryMail = async ({ firstName, lastName, email, phone, role, messag
   return result;
 };
 
-module.exports = sendInquiryMail;
+export default sendInquiryMail;

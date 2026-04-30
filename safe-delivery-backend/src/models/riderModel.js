@@ -1,5 +1,7 @@
-const mongoose = require('mongoose');
-const bcrypt = require('bcryptjs');
+import mongoose from 'mongoose';
+import bcrypt from 'bcryptjs';
+
+const { genSalt, hash, compare } = bcrypt;
 
 const riderSchema = new mongoose.Schema(
   {
@@ -41,38 +43,47 @@ const riderSchema = new mongoose.Schema(
     isPhoneVerified: { type: Boolean, default: false },
     isOnline: { type: Boolean, default: false },
     fcmToken: { type: String, default: null },
+
     dob: { type: String },
+
     vehicle: {
       type: { type: String, enum: ['motorcycle', 'bicycle', 'car'] },
       plate: { type: String, trim: true },
       model: { type: String, trim: true },
       color: { type: String, trim: true },
     },
+
     documents: {
       govtIdFront: { url: String, publicId: String },
       govtIdBack: { url: String, publicId: String },
       license: { url: String, publicId: String },
       rcBook: { url: String, publicId: String },
     },
+
     selfie: {
       url: { type: String },
       publicId: { type: String },
       capturedAt: { type: Date },
     },
+
     profilePhoto: {
       url: { type: String, default: null },
       publicId: { type: String, default: null },
     },
+
     currentLocation: {
       lat: { type: Number },
       lng: { type: Number },
     },
+
     rating: { type: Number, default: 0 },
     totalTrips: { type: Number, default: 0 },
+
     earnings: {
       today: { type: Number, default: 0 },
       total: { type: Number, default: 0 },
     },
+
     approvedAt: { type: Date },
     rejectedAt: { type: Date },
     rejectionReason: { type: String },
@@ -81,15 +92,18 @@ const riderSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// 🔐 hash password
 riderSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
-  const salt = await bcrypt.genSalt(12);
-  this.password = await bcrypt.hash(this.password, salt);
+
+  const salt = await genSalt(12);
+  this.password = await hash(this.password, salt);
   next();
 });
 
+// 🔑 compare password
 riderSchema.methods.matchPassword = async function (enteredPassword) {
-  return await bcrypt.compare(enteredPassword, this.password);
+  return await compare(enteredPassword, this.password);
 };
 
-module.exports = mongoose.model('Rider', riderSchema);
+export default mongoose.model('Rider', riderSchema);

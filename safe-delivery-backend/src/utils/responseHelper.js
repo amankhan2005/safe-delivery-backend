@@ -1,7 +1,12 @@
 /**
- * Send a success response.
+ * Send a success response
  */
-const ok = (res, data = {}, message = 'Success', statusCode = 200) => {
+export const ok = (
+  res,
+  data = {},
+  message = 'Success',
+  statusCode = 200
+) => {
   return res.status(statusCode).json({
     success: true,
     message,
@@ -10,13 +15,17 @@ const ok = (res, data = {}, message = 'Success', statusCode = 200) => {
 };
 
 /**
- * Send an error response.
+ * Send an error response
  */
-const err = (res, message = 'Something went wrong', statusCode = 500) => {
+export const err = (
+  res,
+  message = 'Something went wrong',
+  statusCode = 500,
+  error = null
+) => {
   return res.status(statusCode).json({
     success: false,
-    error: message,
+    message,
+    error: error?.message || null,
   });
 };
-
-module.exports = { ok, err };

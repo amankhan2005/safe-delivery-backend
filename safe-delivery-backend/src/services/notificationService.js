@@ -1,13 +1,15 @@
-const { getMessaging } = require('../config/firebase');
+import { getMessaging } from '../config/firebase.js';
+
+// initialize once
+const messaging = getMessaging();
 
 /**
- * Send a push notification to a single FCM token.
+ * Send push notification
  */
-const push = async (token, title, body, data = {}) => {
+export const push = async (token, title, body, data = {}) => {
   if (!token) return null;
 
   try {
-    const messaging = getMessaging();
     const message = {
       token,
       notification: { title, body },
@@ -18,91 +20,77 @@ const push = async (token, title, body, data = {}) => {
       apns: { payload: { aps: { sound: 'default' } } },
     };
 
-    const response = await messaging.send(message);
-    return response;
+    return await messaging.send(message);
   } catch (error) {
     console.error('FCM push error:', error.message);
     return null;
   }
 };
 
-const notifyRiderFound = async (token, riderName, eta) => {
-  return push(token, '🛵 Rider Assigned!', `${riderName} is on the way. ETA: ${eta} mins.`, {
-    type: 'RIDER_ASSIGNED',
-    riderName,
-    eta: String(eta),
-  });
-};
+// ─── CUSTOMER ─────────────────────────
 
-const notifyPickedUp = async (token) => {
-  return push(token, '📦 Parcel Picked Up', 'Your parcel has been picked up and is on the way!', {
+export const notifyRiderFound = (token, riderName, eta) =>
+  push(
+    token,
+    '🛵 Rider Assigned!',
+    `${riderName} is on the way. ETA: ${eta} mins.`,
+    {
+      type: 'RIDER_ASSIGNED',
+      riderName,
+      eta,
+    }
+  );
+
+export const notifyPickedUp = (token) =>
+  push(token, '📦 Parcel Picked Up', 'Your parcel has been picked up.', {
     type: 'PICKED_UP',
   });
-};
 
-const notifyArriving = async (token, mins) => {
-  return push(token, '🚗 Rider Arriving', `Your rider is ${mins} minutes away. Please prepare to receive.`, {
+export const notifyArriving = (token, mins) =>
+  push(token, '🚗 Rider Arriving', `${mins} minutes away`, {
     type: 'ARRIVING',
-    mins: String(mins),
+    mins,
   });
-};
 
-const notifyDelivered = async (token) => {
-  return push(token, '✅ Delivered!', 'Your parcel has been delivered successfully. Thank you for using Safe Delivery!', {
+export const notifyDelivered = (token) =>
+  push(token, '✅ Delivered!', 'Parcel delivered successfully.', {
     type: 'DELIVERED',
   });
-};
 
-const notifyCancelled = async (token) => {
-  return push(token, '❌ Order Cancelled', 'Your delivery order has been cancelled.', {
+export const notifyCancelled = (token) =>
+  push(token, '❌ Order Cancelled', 'Order cancelled.', {
     type: 'CANCELLED',
   });
-};
 
-const notifyNewOrder = async (token, fare, miles) => {
-  return push(token, '🆕 New Delivery Request', `New order: ${miles} miles — $${fare}. Tap to accept!`, {
+// ─── RIDER ─────────────────────────
+
+export const notifyNewOrder = (token, fare, miles) =>
+  push(token, '🆕 New Order', `${miles} miles — ₹${fare}`, {
     type: 'NEW_ORDER',
-    fare: String(fare),
-    miles: String(miles),
+    fare,
+    miles,
   });
-};
 
-const notifyAccountApproved = async (token) => {
-  return push(token, '🎉 Account Approved!', 'Your Safe Delivery rider account is now approved. Go online and start earning!', {
-    type: 'ACCOUNT_APPROVED',
-  });
-};
-
-const notifyAccountRejected = async (token, reason) => {
-  return push(token, '❌ Application Not Approved', `Your application was not approved. Reason: ${reason}`, {
-    type: 'ACCOUNT_REJECTED',
-    reason,
-  });
-};
-
-const notifyAdminNewRider = async (token) => {
-  return push(token, '👤 New Rider Application', 'A new rider has completed KYC and is awaiting approval.', {
-    type: 'NEW_RIDER_KYC',
-  });
-};
-
-const notifyRiderOrderCancelled = async (token, orderId) => {
-  return push(token, '❌ Order Cancelled', 'The customer cancelled this delivery order.', {
+export const notifyRiderOrderCancelled = (token, orderId) =>
+  push(token, '❌ Order Cancelled', 'Customer cancelled order.', {
     type: 'ORDER_CANCELLED',
     orderId,
   });
-};
 
-module.exports = {
-  push,
-  notifyRiderFound,
-  notifyPickedUp,
-  notifyArriving,
-  notifyDelivered,
-  notifyCancelled,
-  notifyNewOrder,
-  notifyAccountApproved,
-  notifyAccountRejected,
-  notifyAdminNewRider,
-  notifyRiderOrderCancelled,
-};
+// ─── ACCOUNT / ADMIN ─────────────────────────
+
+export const notifyAccountApproved = (token) =>
+  push(token, '🎉 Approved!', 'Your account is approved.', {
+    type: 'ACCOUNT_APPROVED',
+  });
+
+export const notifyAccountRejected = (token, reason) =>
+  push(token, '❌ Rejected', `Reason: ${reason}`, {
+    type: 'ACCOUNT_REJECTED',
+    reason,
+  });
+
+export const notifyAdminNewRider = (token) =>
+  push(token, '👤 New Rider', 'New rider waiting for approval.', {
+    type: 'NEW_RIDER_KYC',
+  });

@@ -1,4 +1,4 @@
-const { Resend } = require('resend');
+import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 const from = `${process.env.RESEND_FROM_NAME || 'Safe Delivery'} <${process.env.RESEND_FROM || 'noreply@safedelivery.com'}>`;
@@ -39,8 +39,8 @@ const sendEmail = async (to, subject, html) => {
   }
 };
 
-const sendWelcomeEmail = async (email, name) => {
-  const subject = 'Welcome to Safe Delivery! 🎉';
+export const sendWelcomeEmail = async (email, name) => {
+  const subject = 'Welcome to Safe Delivery!';
   const html = `
     <div style="${baseStyle}">
       <div style="${headerStyle}">
@@ -48,7 +48,7 @@ const sendWelcomeEmail = async (email, name) => {
         <p style="margin:4px 0 0;opacity:0.85;">Liberia's Trusted Logistics Partner</p>
       </div>
       <div style="${bodyStyle}">
-        <h2 style="color:#1a56db;">Welcome, ${name}! 👋</h2>
+        <h2 style="color:#1a56db;">Welcome, ${name}!</h2>
         <p style="color:#374151;line-height:1.6;">
           We're thrilled to have you on board. With Safe Delivery, you can send parcels
           quickly, safely, and reliably across Liberia.
@@ -71,7 +71,7 @@ const sendWelcomeEmail = async (email, name) => {
   return sendEmail(email, subject, html);
 };
 
-const sendOTPEmail = async (email, name, otp, type) => {
+export const sendOTPEmail = async (email, name, otp, type) => {
   const typeLabel = type === 'email' ? 'email verification' : type === 'reset' ? 'password reset' : 'verification';
   const subject = `Safe Delivery — Your OTP Code`;
   const html = `
@@ -106,7 +106,7 @@ const sendOTPEmail = async (email, name, otp, type) => {
   return sendEmail(email, subject, html);
 };
 
-const sendPasswordResetEmail = async (email, name, otp) => {
+export const sendPasswordResetEmail = async (email, name, otp) => {
   const subject = 'Safe Delivery — Password Reset Request';
   const html = `
     <div style="${baseStyle}">
@@ -140,7 +140,7 @@ const sendPasswordResetEmail = async (email, name, otp) => {
   return sendEmail(email, subject, html);
 };
 
-const sendRiderApprovedEmail = async (email, name) => {
+export const sendRiderApprovedEmail = async (email, name) => {
   const subject = 'Congratulations — Your Safe Delivery Rider Account is Approved!';
   const html = `
     <div style="${baseStyle}">
@@ -148,9 +148,9 @@ const sendRiderApprovedEmail = async (email, name) => {
         <h1 style="margin:0;font-size:24px;">Safe Delivery</h1>
       </div>
       <div style="${bodyStyle}">
-        <h2 style="color:#16a34a;">You're approved, ${name}! 🎉</h2>
+        <h2 style="color:#16a34a;">You're approved, ${name}!</h2>
         <p style="color:#374151;line-height:1.6;">
-          Your Safe Delivery rider account has been reviewed and approved. 
+          Your Safe Delivery rider account has been reviewed and approved.
           You can now log in, go online, and start earning with every delivery.
         </p>
         <p style="color:#374151;">Tips for getting started:</p>
@@ -167,11 +167,4 @@ const sendRiderApprovedEmail = async (email, name) => {
     </div>
   `;
   return sendEmail(email, subject, html);
-};
-
-module.exports = {
-  sendWelcomeEmail,
-  sendOTPEmail,
-  sendPasswordResetEmail,
-  sendRiderApprovedEmail,
 };

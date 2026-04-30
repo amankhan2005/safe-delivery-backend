@@ -1,42 +1,45 @@
-const axios = require('axios');
+import axios from 'axios';
 
 /**
- * Get driving distance in MILES between two coordinates using Google Maps Distance Matrix API.
- * @param {number} originLat
- * @param {number} originLng
- * @param {number} destLat
- * @param {number} destLng
- * @returns {Promise<number>} distance in miles
+ * Get driving distance in MILES between two coordinates
  */
 const getDistanceMiles = async (originLat, originLng, destLat, destLng) => {
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  const url = `https://maps.googleapis.com/maps/api/distancematrix/json`;
 
-  const response = await axios.get(url, {
-    params: {
-      origins: `${originLat},${originLng}`,
-      destinations: `${destLat},${destLng}`,
-      units: 'imperial', // returns miles
-      key: apiKey,
-    },
-  });
-
-  const data = response.data;
-
-  if (
-    data.status !== 'OK' ||
-    !data.rows ||
-    !data.rows[0] ||
-    !data.rows[0].elements ||
-    !data.rows[0].elements[0] ||
-    data.rows[0].elements[0].status !== 'OK'
-  ) {
-    throw new Error('Unable to calculate distance. Check coordinates and API key.');
+  if (!apiKey) {
+    throw new Error('Google Maps API key missing');
   }
 
-  const distanceMeters = data.rows[0].elements[0].distance.value;
-  const distanceMiles = distanceMeters / 1609.344;
-  return Math.round(distanceMiles * 100) / 100;
+  try {
+    const response = await axios.get(
+      'https://maps.googleapis.com/maps/api/distancematrix/json',
+      {
+        params: {
+          origins: `${originLat},${originLng}`,
+          destinations: `${destLat},${destLng}`,
+          units: 'imperial',
+          key: apiKey,
+        },
+        timeout: 5000, // prevent hanging
+      }
+    );
+
+    const data = response.data;
+
+    const element = data?.rows?.[0]?.elements?.[0];
+
+    if (data.status !== 'OK' || element?.status !== 'OK') {
+      throw new Error('Invalid response from Google Maps API');
+    }
+
+    const distanceMeters = element.distance.value;
+    const distanceMiles = distanceMeters / 1609.344;
+
+    return Math.round(distanceMiles * 100) / 100;
+  } catch (error) {
+    console.error('Distance API error:', error.message);
+    throw new Error('Failed to calculate distance');
+  }
 };
 
-module.exports = { getDistanceMiles };
+export default { getDistanceMiles };

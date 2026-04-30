@@ -1,21 +1,8 @@
-const express = require('express');
-const router = express.Router();
-const {
-  kycStep1,
-  kycStep2,
-  kycStep3,
-  getKycStatus,
-  toggleOnline,
-  getDashboard,
-  updateLocation,
-  getEarnings,
-  getRiderOrders,
-  getRiderProfile,
-  updateRiderProfile,
-  uploadProfilePhoto,
-} = require('../controllers/riderController');
-const { protect, isRider } = require('../middleware/auth');
-const { uploadKYC, uploadPhoto } = require('../middleware/upload');
+import { Router } from 'express';
+const router = Router();
+import { kycStep1, kycStep2, kycStep3, getKycStatus, toggleOnline, getDashboard, updateLocation, getEarnings, getRiderOrders, getRiderProfile, updateRiderProfile, uploadProfilePhoto } from '../controllers/riderController.js';
+import { protect, isRider } from '../middleware/auth.js';
+import { uploadKYC, uploadPhoto } from '../middleware/upload.js';
 
 router.post('/kyc/step1', protect, isRider, kycStep1);
 router.post('/kyc/step2', protect, isRider, uploadKYC, kycStep2);
@@ -31,4 +18,4 @@ router.get('/profile', protect, isRider, getRiderProfile);
 router.put('/profile', protect, isRider, updateRiderProfile);
 router.post('/profile/photo', protect, isRider, uploadPhoto, uploadProfilePhoto);
 
-module.exports = router;
+export default router;

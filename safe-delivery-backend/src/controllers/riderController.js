@@ -1,12 +1,12 @@
-const Rider = require('../models/riderModel');
-const Order = require('../models/orderModel');
-const { ok, err } = require('../utils/responseHelper');
-const { notifyAdminNewRider } = require('../services/notificationService');
-const User = require('../models/userModel');
+import Rider from '../models/riderModel.js';
+import Order from '../models/orderModel.js';
+import { ok, err } from '../utils/responseHelper.js';
+import { notifyAdminNewRider } from '../services/notificationService.js';
+import User from '../models/userModel.js';
 
 // ─── KYC ────────────────────────────────────────────────────────
 
-exports.kycStep1 = async (req, res, next) => {
+export async function kycStep1(req, res, next) {
   try {
     const { dob } = req.body;
     if (!dob) return err(res, 'Date of birth is required.', 400);
@@ -20,9 +20,9 @@ exports.kycStep1 = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.kycStep2 = async (req, res, next) => {
+export async function kycStep2(req, res, next) {
   try {
     const files = req.files;
 
@@ -58,9 +58,9 @@ exports.kycStep2 = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.kycStep3 = async (req, res, next) => {
+export async function kycStep3(req, res, next) {
   try {
     const { type, plate, model, color } = req.body;
     const validTypes = ['motorcycle', 'bicycle', 'car'];
@@ -88,20 +88,20 @@ exports.kycStep3 = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.getKycStatus = async (req, res, next) => {
+export async function getKycStatus(req, res, next) {
   try {
     const rider = await Rider.findById(req.user._id).select('kycStep kycCompleted status');
     return ok(res, rider, 'KYC status fetched.');
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── ONLINE STATUS ──────────────────────────────────────────────
 
-exports.toggleOnline = async (req, res, next) => {
+export async function toggleOnline(req, res, next) {
   try {
     const rider = await Rider.findById(req.user._id);
 
@@ -116,11 +116,11 @@ exports.toggleOnline = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── DASHBOARD ──────────────────────────────────────────────────
 
-exports.getDashboard = async (req, res, next) => {
+export async function getDashboard(req, res, next) {
   try {
     const rider = await Rider.findById(req.user._id).select(
       'isOnline status earnings rating totalTrips vehicle name phone'
@@ -129,11 +129,11 @@ exports.getDashboard = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── LOCATION ───────────────────────────────────────────────────
 
-exports.updateLocation = async (req, res, next) => {
+export async function updateLocation(req, res, next) {
   try {
     const { lat, lng } = req.body;
     if (lat === undefined || lng === undefined) return err(res, 'lat and lng are required.', 400);
@@ -146,11 +146,11 @@ exports.updateLocation = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── EARNINGS ───────────────────────────────────────────────────
 
-exports.getEarnings = async (req, res, next) => {
+export async function getEarnings(req, res, next) {
   try {
     const { period = 'daily' } = req.query;
     const riderId = req.user._id;
@@ -190,11 +190,11 @@ exports.getEarnings = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── ORDERS ─────────────────────────────────────────────────────
 
-exports.getRiderOrders = async (req, res, next) => {
+export async function getRiderOrders(req, res, next) {
   try {
     const orders = await Order.find({ riderId: req.user._id })
       .populate('customerId', 'name phone')
@@ -204,20 +204,20 @@ exports.getRiderOrders = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── PROFILE ────────────────────────────────────────────────────
 
-exports.getRiderProfile = async (req, res, next) => {
+export async function getRiderProfile(req, res, next) {
   try {
     const rider = await Rider.findById(req.user._id).select('-password');
     return ok(res, { rider }, 'Profile fetched.');
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.updateRiderProfile = async (req, res, next) => {
+export async function updateRiderProfile(req, res, next) {
   try {
     const { name, email, dob } = req.body;
     const updates = {};
@@ -235,9 +235,9 @@ exports.updateRiderProfile = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.uploadProfilePhoto = async (req, res, next) => {
+export async function uploadProfilePhoto(req, res, next) {
   try {
     if (!req.file) return err(res, 'Profile photo is required.', 400);
 
@@ -245,7 +245,7 @@ exports.uploadProfilePhoto = async (req, res, next) => {
 
     // Delete old photo from Cloudinary if exists
     if (rider.profilePhoto && rider.profilePhoto.publicId) {
-      const { cloudinary } = require('../config/cloudinary');
+      const { cloudinary } = require('../config/cloudinary').default;
       await cloudinary.uploader.destroy(rider.profilePhoto.publicId).catch(console.error);
     }
 
@@ -259,4 +259,4 @@ exports.uploadProfilePhoto = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}

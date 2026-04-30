@@ -1,16 +1,19 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/userModel');
-const Rider = require('../models/riderModel');
-const { err } = require('../utils/responseHelper');
+import jwt from 'jsonwebtoken';
+import User from '../models/userModel.js';
+import Rider from '../models/riderModel.js';
+import { err } from '../utils/responseHelper.js';
 
 /**
  * Protect middleware — verify JWT and attach user/rider to req.
  */
-const protect = async (req, res, next) => {
+export const protect = async (req, res, next) => {
   try {
     let token;
 
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    if (
+      req.headers.authorization &&
+      req.headers.authorization.startsWith('Bearer ')
+    ) {
       token = req.headers.authorization.split(' ')[1];
     }
 
@@ -23,11 +26,13 @@ const protect = async (req, res, next) => {
     if (decoded.role === 'rider') {
       const rider = await Rider.findById(decoded.id);
       if (!rider) return err(res, 'Rider not found.', 401);
+
       req.user = rider;
       req.role = 'rider';
     } else {
       const user = await User.findById(decoded.id);
       if (!user) return err(res, 'User not found.', 401);
+
       req.user = user;
       req.role = decoded.role || 'customer';
     }
@@ -44,25 +49,23 @@ const protect = async (req, res, next) => {
   }
 };
 
-const isAdmin = (req, res, next) => {
+export const isAdmin = (req, res, next) => {
   if (req.role !== 'admin') {
     return err(res, 'Access denied. Admins only.', 403);
   }
   next();
 };
 
-const isRider = (req, res, next) => {
+export const isRider = (req, res, next) => {
   if (req.role !== 'rider') {
     return err(res, 'Access denied. Riders only.', 403);
   }
   next();
 };
 
-const isCustomer = (req, res, next) => {
+export const isCustomer = (req, res, next) => {
   if (req.role !== 'customer') {
     return err(res, 'Access denied. Customers only.', 403);
   }
   next();
 };
-
-module.exports = { protect, isAdmin, isRider, isCustomer };

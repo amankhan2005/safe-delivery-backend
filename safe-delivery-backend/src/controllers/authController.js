@@ -1,26 +1,27 @@
-const jwt = require('jsonwebtoken');
-const User = require('../models/userModel');
-const Rider = require('../models/riderModel');
-const { generateOTP, saveOTP, verifyOTP, checkCooldown } = require('../utils/otpGenerator');
-const { normalizePhone } = require('../utils/phoneNormalizer');
-const { isEmail, findUserByIdentifier, findRiderByIdentifier, generateAndSendOTP } = require('../utils/authHelpers');
-const { sendOTPSms, resendOTPSms, sendResetOTPSms } = require('../services/smsService');
-const { sendOTPEmail, sendWelcomeEmail, sendPasswordResetEmail } = require('../services/emailService');
-const { ok, err } = require('../utils/responseHelper');
+import pkg from 'jsonwebtoken';
+const { sign, verify } = pkg;
+
+import User from '../models/userModel.js';
+import Rider from '../models/riderModel.js';
+import { generateOTP, saveOTP, verifyOTP, checkCooldown } from '../utils/otpGenerator.js';
+import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { isEmail, findUserByIdentifier, findRiderByIdentifier, generateAndSendOTP } from '../utils/authHelpers.js';
+import { sendOTPSms, resendOTPSms, sendResetOTPSms } from '../services/smsService.js';
+import { sendOTPEmail, sendWelcomeEmail, sendPasswordResetEmail } from '../services/emailService.js';
+import { ok, err } from '../utils/responseHelper.js';
 
 const signToken = (id, role) =>
-  jwt.sign({ id, role }, process.env.JWT_SECRET, {
+  sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
   });
 
 const signResetToken = (id, role) =>
-  jwt.sign({ id, role, purpose: 'reset' }, process.env.JWT_SECRET, { expiresIn: '15m' });
+  sign({ id, role, purpose: 'reset' }, process.env.JWT_SECRET, { expiresIn: '15m' });
 
 // ─── CUSTOMER AUTH ──────────────────────────────────────────────
 
-exports.signup = async (req, res, next) => {
+export async function signup(req, res, next) {
   try {
-    // phone + email are already normalized by validateSignup middleware
     const { name, phone, email, password } = req.body;
 
     if (await User.findOne({ phone })) {
@@ -31,16 +32,15 @@ exports.signup = async (req, res, next) => {
     }
 
     const user = await User.create({ name, phone, email, password });
-
     await generateAndSendOTP(phone, 'phone', { email, name });
 
     return ok(res, { userId: user._id }, 'Account created. Check your phone and email for verification codes.', 201);
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.verifyPhoneOTP = async (req, res, next) => {
+export async function verifyPhoneOTP(req, res, next) {
   try {
     const { userId, otp } = req.body;
     if (!userId || !otp) return err(res, 'userId and otp are required.', 400);
@@ -63,9 +63,9 @@ exports.verifyPhoneOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.verifyEmailOTP = async (req, res, next) => {
+export async function verifyEmailOTP(req, res, next) {
   try {
     const { userId, otp } = req.body;
     if (!userId || !otp) return err(res, 'userId and otp are required.', 400);
@@ -88,9 +88,9 @@ exports.verifyEmailOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.resendOTP = async (req, res, next) => {
+export async function resendOTP(req, res, next) {
   try {
     let { identifier, type, userId } = req.body;
     if (!identifier || !type) return err(res, 'identifier and type are required.', 400);
@@ -123,11 +123,10 @@ exports.resendOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.login = async (req, res, next) => {
+export async function login(req, res, next) {
   try {
-    // identifier already normalized by validateLogin middleware
     const { identifier, password } = req.body;
 
     const user = await findUserByIdentifier(identifier, true);
@@ -152,9 +151,9 @@ exports.login = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.sendLoginOTP = async (req, res, next) => {
+export async function sendLoginOTP(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
@@ -179,9 +178,9 @@ exports.sendLoginOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.verifyLoginOTP = async (req, res, next) => {
+export async function verifyLoginOTP(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     const { otp } = req.body;
@@ -207,9 +206,9 @@ exports.verifyLoginOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.resendLoginOTP = async (req, res, next) => {
+export async function resendLoginOTP(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
@@ -230,9 +229,9 @@ exports.resendLoginOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.forgotPassword = async (req, res, next) => {
+export async function forgotPassword(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
@@ -254,9 +253,9 @@ exports.forgotPassword = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.resendForgotOTP = async (req, res, next) => {
+export async function resendForgotOTP(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
@@ -277,9 +276,9 @@ exports.resendForgotOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.verifyResetOTP = async (req, res, next) => {
+export async function verifyResetOTP(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     const { otp } = req.body;
@@ -291,22 +290,20 @@ exports.verifyResetOTP = async (req, res, next) => {
     const result = await verifyOTP(phone, otp, 'reset');
     if (!result.success) return err(res, result.message, result.blocked ? 429 : 400);
 
-    // OTP deleted on success — reuse impossible
     const resetToken = signResetToken(user._id, user.role);
     return ok(res, { resetToken }, 'OTP verified. Use resetToken to set a new password.');
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.resetPassword = async (req, res, next) => {
+export async function resetPassword(req, res, next) {
   try {
-    // Validated by validateResetPassword middleware
     const { resetToken, newPassword } = req.body;
 
     let decoded;
     try {
-      decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
+      decoded = verify(resetToken, process.env.JWT_SECRET);
     } catch {
       return err(res, 'Invalid or expired reset token.', 400);
     }
@@ -324,9 +321,9 @@ exports.resetPassword = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.changePassword = async (req, res, next) => {
+export async function changePassword(req, res, next) {
   try {
     const { oldPassword, newPassword } = req.body;
     if (!oldPassword || !newPassword) return err(res, 'oldPassword and newPassword are required.', 400);
@@ -344,17 +341,17 @@ exports.changePassword = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.getMe = async (req, res, next) => {
+export async function getMe(req, res, next) {
   try {
     return ok(res, { user: req.user }, 'User details fetched.');
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.saveFcmToken = async (req, res, next) => {
+export async function saveFcmToken(req, res, next) {
   try {
     const { fcmToken } = req.body;
     if (!fcmToken) return err(res, 'fcmToken is required.', 400);
@@ -366,16 +363,14 @@ exports.saveFcmToken = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── RIDER AUTH ──────────────────────────────────────────────────
 
-exports.riderSignup = async (req, res, next) => {
+export async function riderSignup(req, res, next) {
   try {
-    // phone + email normalized by validateSignup middleware
     const { name, phone, email, password } = req.body;
 
-    // Check selfie first — avoids leaking whether phone/email is registered
     if (!req.file) {
       return err(res, 'A live selfie photo is required to create a rider account.', 400);
     }
@@ -388,10 +383,7 @@ exports.riderSignup = async (req, res, next) => {
     }
 
     const rider = await Rider.create({
-      name,
-      phone,
-      email,
-      password,
+      name, phone, email, password,
       selfie: {
         url: req.file.path,
         publicId: req.file.filename,
@@ -407,9 +399,9 @@ exports.riderSignup = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.riderVerifyPhoneOTP = async (req, res, next) => {
+export async function riderVerifyPhoneOTP(req, res, next) {
   try {
     const { riderId, otp } = req.body;
     if (!riderId || !otp) return err(res, 'riderId and otp are required.', 400);
@@ -428,9 +420,9 @@ exports.riderVerifyPhoneOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.riderResendOTP = async (req, res, next) => {
+export async function riderResendOTP(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
@@ -451,11 +443,10 @@ exports.riderResendOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.riderLogin = async (req, res, next) => {
+export async function riderLogin(req, res, next) {
   try {
-    // identifier already normalized by validateLogin middleware
     const { identifier, password } = req.body;
 
     const rider = await findRiderByIdentifier(identifier, true);
@@ -475,9 +466,9 @@ exports.riderLogin = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.riderSendLoginOTP = async (req, res, next) => {
+export async function riderSendLoginOTP(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
@@ -498,9 +489,9 @@ exports.riderSendLoginOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.riderVerifyLoginOTP = async (req, res, next) => {
+export async function riderVerifyLoginOTP(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     const { otp } = req.body;
@@ -522,9 +513,9 @@ exports.riderVerifyLoginOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.riderResendLoginOTP = async (req, res, next) => {
+export async function riderResendLoginOTP(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
@@ -545,9 +536,9 @@ exports.riderResendLoginOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.riderForgotPassword = async (req, res, next) => {
+export async function riderForgotPassword(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
@@ -568,9 +559,9 @@ exports.riderForgotPassword = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.riderResendForgotOTP = async (req, res, next) => {
+export async function riderResendForgotOTP(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     if (!phone) return err(res, 'Phone number is required.', 400);
@@ -591,9 +582,9 @@ exports.riderResendForgotOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.riderVerifyResetOTP = async (req, res, next) => {
+export async function riderVerifyResetOTP(req, res, next) {
   try {
     const phone = normalizePhone(req.body.phone);
     const { otp } = req.body;
@@ -605,22 +596,20 @@ exports.riderVerifyResetOTP = async (req, res, next) => {
     const result = await verifyOTP(phone, otp, 'reset');
     if (!result.success) return err(res, result.message, result.blocked ? 429 : 400);
 
-    // OTP deleted on success — reuse impossible
     const resetToken = signResetToken(rider._id, 'rider');
     return ok(res, { resetToken }, 'OTP verified. Use resetToken to set a new password.');
   } catch (error) {
     next(error);
   }
-};
+}
 
-exports.riderResetPassword = async (req, res, next) => {
+export async function riderResetPassword(req, res, next) {
   try {
-    // Validated by validateResetPassword middleware
     const { resetToken, newPassword } = req.body;
 
     let decoded;
     try {
-      decoded = jwt.verify(resetToken, process.env.JWT_SECRET);
+      decoded = verify(resetToken, process.env.JWT_SECRET);
     } catch {
       return err(res, 'Invalid or expired reset token.', 400);
     }
@@ -638,4 +627,4 @@ exports.riderResetPassword = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}

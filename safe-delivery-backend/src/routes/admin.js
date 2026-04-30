@@ -1,25 +1,7 @@
-const express = require('express');
-const router = express.Router();
-const {
-  adminLogin,
-  getDashboard,
-  getRiders,
-  getRiderById,
-  approveRider,
-  rejectRider,
-  banRider,
-  getCustomers,
-  getCustomerById,
-  getOrders,
-  getOrderById,
-  getPricing,
-  updatePricing,
-  createPromoCode,
-  deletePromoCode,
-  getInquiries,
-  getInquiryById,
-} = require('../controllers/adminController');
-const { protect, isAdmin } = require('../middleware/auth');
+import { Router } from 'express';
+const router = Router();
+import { adminLogin, getDashboard, getRiders, getRiderById, approveRider, rejectRider, banRider, getCustomers, getCustomerById, getOrders, getOrderById, getPricing, updatePricing, createPromoCode, deletePromoCode, getInquiries, getInquiryById } from '../controllers/adminController.js';
+import { protect, isAdmin } from '../middleware/auth.js';
 
 router.post('/login', adminLogin);
 
@@ -45,4 +27,4 @@ router.delete('/pricing/promo/:code', protect, isAdmin, deletePromoCode);
 router.get('/inquiries', protect, isAdmin, getInquiries);
 router.get('/inquiries/:id', protect, isAdmin, getInquiryById);
 
-module.exports = router;
+export default router;

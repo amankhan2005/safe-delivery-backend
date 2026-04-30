@@ -1,21 +1,14 @@
-const Order = require('../models/orderModel');
-const Rider = require('../models/riderModel');
-const Pricing = require('../models/pricingModel');
-const { ok, err } = require('../utils/responseHelper');
-const { getDistance, calculateFare, applyPromo } = require('../utils/fareCalculator');
-const { generateOTP } = require('../utils/otpGenerator');
-const {
-  notifyNewOrder,
-  notifyRiderFound,
-  notifyPickedUp,
-  notifyArriving,
-  notifyDelivered,
-  notifyRiderOrderCancelled,
-} = require('../services/notificationService');
+import Order from '../models/orderModel.js';
+import Rider from '../models/riderModel.js';
+import Pricing from '../models/pricingModel.js';
+import { ok, err } from '../utils/responseHelper.js';
+import { getDistance, calculateFare, applyPromo } from '../utils/fareCalculator.js';
+import { generateOTP } from '../utils/otpGenerator.js';
+import { notifyNewOrder, notifyRiderFound, notifyPickedUp, notifyArriving, notifyDelivered, notifyRiderOrderCancelled } from '../services/notificationService.js';
 
 // ─── FARE CALCULATION ───────────────────────────────────────────
 
-exports.calculateFare = async (req, res, next) => {
+const _calculateFare = async (req, res, next) => {
   try {
     const { pickupLat, pickupLng, dropLat, dropLng, promoCode } = req.body;
 
@@ -37,8 +30,7 @@ exports.calculateFare = async (req, res, next) => {
 
     if (promoCode) {
       const promo = pricing.promoCodes.find(
-        (p) =>
-          p.code === promoCode.toUpperCase() &&
+        (p) => p.code === promoCode.toUpperCase() &&
           p.isActive &&
           (!p.expiresAt || new Date() < p.expiresAt) &&
           p.usedCount < p.usageLimit
@@ -67,10 +59,11 @@ exports.calculateFare = async (req, res, next) => {
     next(error);
   }
 };
+export { _calculateFare as calculateFare };
 
 // ─── CREATE ORDER ───────────────────────────────────────────────
 
-exports.createOrder = async (req, res, next) => {
+export async function createOrder(req, res, next) {
   try {
     const { pickup, drop, parcelWeight, promoCode, notes } = req.body;
 
@@ -131,7 +124,7 @@ exports.createOrder = async (req, res, next) => {
     }
 
     // Increment customer totalOrders
-    const User = require('../models/userModel');
+    const User = require('../models/userModel').default;
     await User.findByIdAndUpdate(req.user._id, { $inc: { totalOrders: 1 } });
 
     return ok(res, {
@@ -144,11 +137,11 @@ exports.createOrder = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── ACCEPT ORDER ───────────────────────────────────────────────
 
-exports.acceptOrder = async (req, res, next) => {
+export async function acceptOrder(req, res, next) {
   try {
     const order = await Order.findById(req.params.id);
     if (!order) return err(res, 'Order not found.', 404);
@@ -177,11 +170,11 @@ exports.acceptOrder = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── REJECT ORDER ───────────────────────────────────────────────
 
-exports.rejectOrder = async (req, res, next) => {
+export async function rejectOrder(req, res, next) {
   try {
     const order = await Order.findById(req.params.id);
     if (!order) return err(res, 'Order not found.', 404);
@@ -195,11 +188,11 @@ exports.rejectOrder = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── PICKUP PHOTO ───────────────────────────────────────────────
 
-exports.uploadPickupPhoto = async (req, res, next) => {
+export async function uploadPickupPhoto(req, res, next) {
   try {
     if (!req.file) return err(res, 'Pickup photo is required.', 400);
 
@@ -228,11 +221,11 @@ exports.uploadPickupPhoto = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── START TRANSIT ───────────────────────────────────────────────
 
-exports.startTransit = async (req, res, next) => {
+export async function startTransit(req, res, next) {
   try {
     const order = await Order.findOne({ _id: req.params.id, riderId: req.user._id });
     if (!order) return err(res, 'Order not found.', 404);
@@ -254,11 +247,11 @@ exports.startTransit = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── DROP PHOTO ──────────────────────────────────────────────────
 
-exports.uploadDropPhoto = async (req, res, next) => {
+export async function uploadDropPhoto(req, res, next) {
   try {
     if (!req.file) return err(res, 'Drop photo is required.', 400);
 
@@ -285,11 +278,11 @@ exports.uploadDropPhoto = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── VERIFY DELIVERY OTP ────────────────────────────────────────
 
-exports.verifyDeliveryOTP = async (req, res, next) => {
+export async function verifyDeliveryOTP(req, res, next) {
   try {
     const { otp } = req.body;
     if (!otp) return err(res, 'OTP is required.', 400);
@@ -332,11 +325,11 @@ exports.verifyDeliveryOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── CANCEL ORDER ───────────────────────────────────────────────
 
-exports.cancelOrder = async (req, res, next) => {
+export async function cancelOrder(req, res, next) {
   try {
     const { cancellationReason } = req.body;
 
@@ -363,11 +356,11 @@ exports.cancelOrder = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── MY ORDERS ──────────────────────────────────────────────────
 
-exports.getMyOrders = async (req, res, next) => {
+export async function getMyOrders(req, res, next) {
   try {
     const orders = await Order.find({ customerId: req.user._id })
       .populate('riderId', 'name phone vehicle profilePhoto rating currentLocation')
@@ -377,11 +370,11 @@ exports.getMyOrders = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── GET ORDER ──────────────────────────────────────────────────
 
-exports.getOrder = async (req, res, next) => {
+export async function getOrder(req, res, next) {
   try {
     const order = await Order.findById(req.params.id)
       .populate('customerId', 'name phone email')
@@ -407,11 +400,11 @@ exports.getOrder = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}
 
 // ─── GET DELIVERY OTP ──────────────────────────────────────────
 
-exports.getDeliveryOTP = async (req, res, next) => {
+export async function getDeliveryOTP(req, res, next) {
   try {
     const order = await Order.findOne({ _id: req.params.id, customerId: req.user._id });
     if (!order) return err(res, 'Order not found.', 404);
@@ -424,4 +417,4 @@ exports.getDeliveryOTP = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
-};
+}

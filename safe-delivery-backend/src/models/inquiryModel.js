@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+import { Schema, model } from 'mongoose';
 
-const inquirySchema = new mongoose.Schema(
+const inquirySchema = new Schema(
   {
     firstName: {
       type: String,
@@ -38,4 +38,4 @@ const inquirySchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Inquiry', inquirySchema);
+export default model('Inquiry', inquirySchema);

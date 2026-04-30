@@ -1,53 +1,55 @@
- require('dotenv').config();
+import dotenv from 'dotenv';
+dotenv.config();
 
-const express = require('express');
-const helmet = require('helmet');
-const cors = require('cors');
-const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
+import express, { json, urlencoded } from 'express';
+import helmet from 'helmet';
+import cors from 'cors';
+import morgan from 'morgan';
+import rateLimit from 'express-rate-limit';
+import mongoose from 'mongoose';
 
-const connectDB = require('./config/db');
-const { initializeFirebase } = require('./config/firebase');
-const errorHandler = require('./middleware/errorHandler');
+import connectDB from './config/db.js';
+import { initializeFirebase } from './config/firebase.js';
+import errorHandler from './middleware/errorHandler.js';
 
-const authRoutes = require('./routes/auth');
-const riderRoutes = require('./routes/riders');
-const orderRoutes = require('./routes/orders');
-const adminRoutes = require('./routes/admin');
-const notificationRoutes = require('./routes/notifications');
-const inquiryRoutes = require('./routes/inquiryRoutes')
-
-// ─── Init ─────────────────────────────────────────────────────────────────────
-connectDB();
-initializeFirebase();
+import authRoutes from './routes/auth.js';
+import riderRoutes from './routes/riders.js';
+import orderRoutes from './routes/orders.js';
+import adminRoutes from './routes/admin.js';
+import notificationRoutes from './routes/notifications.js';
+import inquiryRoutes from './routes/inquiryRoutes.js';
 
 const app = express();
 
-// ─── Security & Logging ───────────────────────────────────────────────────────
-app.use(helmet());
-app.use(cors());
-app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// ─── SECURITY & MIDDLEWARE ─────────────────────────
 
-// ─── Rate Limiters ───────────────────────────────────────────────────────────
+app.use(helmet());
+
+app.use(cors({
+  origin: '*',  
+}));
+
+app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+app.use(json({ limit: '10mb' }));
+app.use(urlencoded({ extended: true, limit: '10mb' }));
+
+// ─── RATE LIMIT ─────────────────────────
+
 const globalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100,
+  windowMs: 15 * 60 * 1000,
+  max: process.env.NODE_ENV === 'production' ? 100 : 1000,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { success: false, error: 'Too many requests. Please try again later.' },
 });
 
 const otpLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
+  windowMs: 5 * 60 * 1000,
   max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { success: false, error: 'Too many OTP requests. Please wait before trying again.' },
 });
 
 app.use(globalLimiter);
+
 app.use('/api/auth/send-login-otp', otpLimiter);
 app.use('/api/auth/resend-otp', otpLimiter);
 app.use('/api/auth/resend-login-otp', otpLimiter);
@@ -59,12 +61,19 @@ app.use('/api/auth/rider-resend-login-otp', otpLimiter);
 app.use('/api/auth/rider-forgot-password', otpLimiter);
 app.use('/api/auth/rider-resend-forgot-otp', otpLimiter);
 
-// ─── Health Check ─────────────────────────────────────────────────────────────
+// ─── HEALTH CHECK ─────────────────────────
+
 app.get('/health', (req, res) => {
-  res.json({ success: true, message: 'Safe Delivery API is running.', env: process.env.NODE_ENV });
+  res.json({
+    success: true,
+    message: 'Safe Delivery API is running',
+    env: process.env.NODE_ENV,
+    dbState: mongoose.connection.readyState, // 1 = connected
+  });
 });
 
-// ─── Routes ───────────────────────────────────────────────────────────────────
+// ─── ROUTES ─────────────────────────
+
 app.use('/api/auth', authRoutes);
 app.use('/api/riders', riderRoutes);
 app.use('/api/orders', orderRoutes);
@@ -72,19 +81,40 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/inquiry', inquiryRoutes);
 
-// ─── 404 Handler ──────────────────────────────────────────────────────────────
+// ─── 404 ─────────────────────────
+
 app.use((req, res) => {
-  res.status(404).json({ success: false, error: `Route ${req.method} ${req.originalUrl} not found.` });
+  res.status(404).json({
+    success: false,
+    error: `Route ${req.method} ${req.originalUrl} not found.`,
+  });
 });
 
-// ─── Global Error Handler ────────────────────────────────────────────────────
+// ─── ERROR HANDLER ─────────────────────────
+
 app.use(errorHandler);
 
-// ─── Start Server ─────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`\n🚀 Safe Delivery API running on port ${PORT} [${process.env.NODE_ENV || 'development'}]`);
-  console.log(`   Health: http://localhost:${PORT}/health\n`);
-});
+// ─── START SERVER (IMPORTANT FIX) ─────────────────────────
 
-module.exports = app;
+const startServer = async () => {
+  try {
+    await connectDB();        // ✅ DB connect first
+    initializeFirebase();     // ✅ Firebase init
+
+    const PORT = process.env.PORT || 5000;
+
+    app.listen(PORT, () => {
+      console.log(`\n🚀 Safe Delivery API running on port ${PORT}`);
+      console.log(`🌐 http://localhost:${PORT}`);
+      console.log(`💚 Health: /health\n`);
+    });
+
+  } catch (error) {
+    console.error('❌ Server start failed:', error.message);
+    process.exit(1);
+  }
+};
+
+startServer();
+
+export default app;

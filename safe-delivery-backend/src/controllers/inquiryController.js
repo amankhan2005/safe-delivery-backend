@@ -1,9 +1,9 @@
-const Inquiry = require('../models/inquiryModel');
-const sendInquiryMail = require('../utils/sendInquiryMail');
+import Inquiry from '../models/inquiryModel.js';
+import sendInquiryMail from '../utils/sendInquiryMail.js';
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-exports.submitInquiry = async (req, res) => {
+export async function submitInquiry(req, res) {
   try {
     const { firstName, lastName, phone, role, email, message } = req.body;
 
@@ -80,4 +80,4 @@ exports.submitInquiry = async (req, res) => {
       error: 'Something went wrong. Please try again later.',
     });
   }
-};
+}

@@ -1,6 +1,6 @@
-const mongoose = require('mongoose');
+import { Schema, model } from 'mongoose';
 
-const promoCodeSchema = new mongoose.Schema({
+const promoCodeSchema = new Schema({
   code: {
     type: String,
     required: true,
@@ -22,7 +22,7 @@ const promoCodeSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
 });
 
-const pricingSchema = new mongoose.Schema(
+const pricingSchema = new Schema(
   {
     costPerMile: {
       type: Number,
@@ -34,7 +34,7 @@ const pricingSchema = new mongoose.Schema(
       default: 'USD',
     },
     updatedBy: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Schema.Types.ObjectId,
       ref: 'User',
     },
     promoCodes: [promoCodeSchema],
@@ -42,4 +42,4 @@ const pricingSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-module.exports = mongoose.model('Pricing', pricingSchema);
+export default model('Pricing', pricingSchema);
