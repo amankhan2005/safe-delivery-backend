@@ -2,6 +2,7 @@ const User = require('../models/userModel');
 const Rider = require('../models/riderModel');
 const Order = require('../models/orderModel');
 const Pricing = require('../models/pricingModel');
+const Inquiry = require('../models/inquiryModel');
 const jwt = require('jsonwebtoken');
 const { ok, err } = require('../utils/responseHelper');
 const { sendApprovalSms, sendRejectionSms } = require('../services/smsService');
@@ -49,6 +50,7 @@ exports.getDashboard = async (req, res, next) => {
       todayOrders,
       onlineRiders,
       offlineRiders,
+      totalInquiries,
     ] = await Promise.all([
       Rider.countDocuments(),
       Rider.countDocuments({ status: 'pending' }),
@@ -57,6 +59,7 @@ exports.getDashboard = async (req, res, next) => {
       Order.find({ createdAt: { $gte: today } }).select('fare status'),
       Rider.countDocuments({ status: 'approved', isOnline: true }),
       Rider.countDocuments({ status: 'approved', isOnline: false }),
+      Inquiry.countDocuments(),
     ]);
 
     const todayDeliveries = todayOrders.filter((o) => o.status === 'delivered').length;
@@ -94,6 +97,7 @@ exports.getDashboard = async (req, res, next) => {
       totalOrders,
       todayDeliveries,
       todayRevenue: Math.round(todayRevenue * 100) / 100,
+      totalInquiries,
       weeklyOrdersChart,
       orderStatusBreakdown,
     }, 'Dashboard data fetched.');
@@ -363,6 +367,44 @@ exports.deletePromoCode = async (req, res, next) => {
     await pricing.save();
 
     return ok(res, {}, 'Promo code deactivated.');
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ─── INQUIRIES ───────────────────────────────────────────────────
+
+exports.getInquiries = async (req, res, next) => {
+  try {
+    const { role, page = 1, limit = 20 } = req.query;
+    const filter = {};
+    if (role && ['customer', 'driver'].includes(role)) filter.role = role;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const [inquiries, total] = await Promise.all([
+      Inquiry.find(filter)
+        .skip(skip)
+        .limit(parseInt(limit))
+        .sort({ createdAt: -1 }),
+      Inquiry.countDocuments(filter),
+    ]);
+
+    return ok(res, {
+      inquiries,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / limit),
+    }, 'Inquiries fetched.');
+  } catch (error) {
+    next(error);
+  }
+};
+
+exports.getInquiryById = async (req, res, next) => {
+  try {
+    const inquiry = await Inquiry.findById(req.params.id);
+    if (!inquiry) return err(res, 'Inquiry not found.', 404);
+    return ok(res, { inquiry }, 'Inquiry fetched.');
   } catch (error) {
     next(error);
   }

@@ -16,6 +16,8 @@ const {
   updatePricing,
   createPromoCode,
   deletePromoCode,
+  getInquiries,
+  getInquiryById,
 } = require('../controllers/adminController');
 const { protect, isAdmin } = require('../middleware/auth');
 
@@ -39,5 +41,8 @@ router.get('/pricing', protect, isAdmin, getPricing);
 router.put('/pricing', protect, isAdmin, updatePricing);
 router.post('/pricing/promo', protect, isAdmin, createPromoCode);
 router.delete('/pricing/promo/:code', protect, isAdmin, deletePromoCode);
+
+router.get('/inquiries', protect, isAdmin, getInquiries);
+router.get('/inquiries/:id', protect, isAdmin, getInquiryById);
 
 module.exports = router;

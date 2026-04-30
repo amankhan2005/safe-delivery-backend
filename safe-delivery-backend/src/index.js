@@ -15,6 +15,7 @@ const riderRoutes = require('./routes/riders');
 const orderRoutes = require('./routes/orders');
 const adminRoutes = require('./routes/admin');
 const notificationRoutes = require('./routes/notifications');
+const inquiryRoutes = require('./routes/inquiryRoutes')
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 connectDB();
@@ -69,6 +70,7 @@ app.use('/api/riders', riderRoutes);
 app.use('/api/orders', orderRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/inquiry', inquiryRoutes);
 
 // ─── 404 Handler ──────────────────────────────────────────────────────────────
 app.use((req, res) => {
