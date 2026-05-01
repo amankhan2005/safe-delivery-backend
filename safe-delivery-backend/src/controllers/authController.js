@@ -4,12 +4,12 @@ const { sign, verify } = pkg;
 import User from '../models/userModel.js';
 import Rider from '../models/riderModel.js';
 import { generateOTP, saveOTP, verifyOTP, checkCooldown } from '../utils/otpGenerator.js';
-import { normalizePhone } from '../utils/phoneNormalizer.js';
+import { normalizePhone,  isValidLiberiaPhone } from '../utils/phoneNormalizer.js';
 import { isEmail, findUserByIdentifier, findRiderByIdentifier, generateAndSendOTP } from '../utils/authHelpers.js';
 import { sendOTPSms, resendOTPSms, sendResetOTPSms } from '../services/smsService.js';
 import { sendOTPEmail, sendWelcomeEmail, sendPasswordResetEmail } from '../services/emailService.js';
 import { ok, err } from '../utils/responseHelper.js';
-
+ 
 const signToken = (id, role) =>
   sign({ id, role }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
@@ -20,22 +20,58 @@ const signResetToken = (id, role) =>
 
 // ─── CUSTOMER AUTH ──────────────────────────────────────────────
 
+// export async function signup(req, res, next) {
+//   try {
+//     const { name, phone, email, password } = req.body;
+
+//     if (await User.findOne({ phone })) {
+//       return err(res, 'Phone number is already registered.', 400);
+//     }
+//     if (await User.findOne({ email })) {
+//       return err(res, 'Email address is already registered.', 400);
+//     }
+
+//     const user = await User.create({ name, phone, email, password });
+//     await generateAndSendOTP(phone, 'phone', { email, name });
+
+//     return ok(res, { userId: user._id }, 'Account created. Check your phone and email for verification codes.', 201);
+//   } catch (error) {
+//     next(error);
+//   }
+// }
+
+ 
 export async function signup(req, res, next) {
   try {
-    const { name, phone, email, password } = req.body;
+    console.log("BODY 👉", req.body);   
+
+    let { name, phone, email, password } = req.body;
+
+    phone = normalizePhone(phone);
+
+    if (!isValidLiberiaPhone(phone)) {
+      console.log("❌ Invalid phone:", phone);
+      return err(res, 'Invalid phone number.', 400);
+    }
 
     if (await User.findOne({ phone })) {
+      console.log("❌ Phone exists");
       return err(res, 'Phone number is already registered.', 400);
     }
+
     if (await User.findOne({ email })) {
+      console.log("❌ Email exists");
       return err(res, 'Email address is already registered.', 400);
     }
 
     const user = await User.create({ name, phone, email, password });
+
     await generateAndSendOTP(phone, 'phone', { email, name });
 
-    return ok(res, { userId: user._id }, 'Account created. Check your phone and email for verification codes.', 201);
+    return ok(res, { userId: user._id }, 'Account created', 201);
+
   } catch (error) {
+    console.log("🔥 ERROR:", error.message);  // 👈 ADD THIS
     next(error);
   }
 }

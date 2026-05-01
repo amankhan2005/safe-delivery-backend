@@ -72,6 +72,10 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.get('/', (req, res) => {
+  res.send('🚀 Safe Delivery API Running');
+});
+
 // ─── ROUTES ─────────────────────────
 
 app.use('/api/auth', authRoutes);
