@@ -664,3 +664,25 @@ export async function riderResetPassword(req, res, next) {
     next(error);
   }
 }
+// ─── RIDER CHANGE PASSWORD ────────────────────────────────────────
+// Separate from customer changePassword because changePassword uses User.findById
+export async function riderChangePassword(req, res, next) {
+  try {
+    const { oldPassword, newPassword } = req.body;
+    if (!oldPassword || !newPassword) return err(res, 'oldPassword and newPassword are required.', 400);
+    if (newPassword.length < 6) return err(res, 'New password must be at least 6 characters.', 400);
+
+    const rider = await Rider.findById(req.user._id).select('+password');
+    if (!rider) return err(res, 'Rider not found.', 404);
+    if (!(await rider.matchPassword(oldPassword))) {
+      return err(res, 'Old password is incorrect.', 401);
+    }
+
+    rider.password = newPassword;
+    await rider.save();
+
+    return ok(res, {}, 'Password changed successfully.');
+  } catch (error) {
+    next(error);
+  }
+}

@@ -4,6 +4,7 @@ import Pricing from '../models/pricingModel.js';
 import { ok, err } from '../utils/responseHelper.js';
 import { getDistance, calculateFare, applyPromo } from '../utils/fareCalculator.js';
 import { generateOTP } from '../utils/otpGenerator.js';
+import User from '../models/userModel.js';
 import { notifyNewOrder, notifyRiderFound, notifyPickedUp, notifyArriving, notifyDelivered, notifyRiderOrderCancelled } from '../services/notificationService.js';
 
 // ─── FARE CALCULATION ───────────────────────────────────────────
@@ -124,7 +125,6 @@ export async function createOrder(req, res, next) {
     }
 
     // Increment customer totalOrders
-    const User = require('../models/userModel').default;
     await User.findByIdAndUpdate(req.user._id, { $inc: { totalOrders: 1 } });
 
     return ok(res, {

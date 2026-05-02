@@ -1,7 +1,7 @@
 import { Router } from 'express';
 const router = Router();
-import { signup, verifyPhoneOTP, verifyEmailOTP, resendOTP, login, sendLoginOTP, verifyLoginOTP, resendLoginOTP, forgotPassword, resendForgotOTP, verifyResetOTP, resetPassword, changePassword, getMe, saveFcmToken, riderSignup, riderVerifyPhoneOTP, riderResendOTP, riderLogin, riderSendLoginOTP, riderVerifyLoginOTP, riderResendLoginOTP, riderForgotPassword, riderResendForgotOTP, riderVerifyResetOTP, riderResetPassword } from '../controllers/authController.js';
-import { protect } from '../middleware/auth.js';
+import { signup, riderChangePassword, verifyPhoneOTP, verifyEmailOTP, resendOTP, login, sendLoginOTP, verifyLoginOTP, resendLoginOTP, forgotPassword, resendForgotOTP, verifyResetOTP, resetPassword, changePassword, getMe, saveFcmToken, riderSignup, riderVerifyPhoneOTP, riderResendOTP, riderLogin, riderSendLoginOTP, riderVerifyLoginOTP, riderResendLoginOTP, riderForgotPassword, riderResendForgotOTP, riderVerifyResetOTP, riderResetPassword } from '../controllers/authController.js';
+import { protect, isRider } from '../middleware/auth.js';
 import { validateSignup, validateLogin, validateOTPVerify, validateResetPassword } from '../middleware/validate.js';
 import { uploadSelfie } from '../middleware/upload.js';
 
@@ -35,5 +35,7 @@ router.post('/rider-forgot-password', riderForgotPassword);
 router.post('/rider-resend-forgot-otp', riderResendForgotOTP);
 router.post('/rider-verify-reset-otp', validateOTPVerify, riderVerifyResetOTP);
 router.post('/rider-reset-password', validateResetPassword, riderResetPassword);
+
+router.post("/rider-change-password", protect, isRider, riderChangePassword);
 
 export default router;

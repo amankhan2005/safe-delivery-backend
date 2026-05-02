@@ -3,6 +3,7 @@ import Order from '../models/orderModel.js';
 import { ok, err } from '../utils/responseHelper.js';
 import { notifyAdminNewRider } from '../services/notificationService.js';
 import User from '../models/userModel.js';
+import cloudinaryConfig from '../config/cloudinary.js';
 
 // ─── KYC ────────────────────────────────────────────────────────
 
@@ -245,7 +246,7 @@ export async function uploadProfilePhoto(req, res, next) {
 
     // Delete old photo from Cloudinary if exists
     if (rider.profilePhoto && rider.profilePhoto.publicId) {
-      const { cloudinary } = require('../config/cloudinary').default;
+      const { cloudinary } = cloudinaryConfig;
       await cloudinary.uploader.destroy(rider.profilePhoto.publicId).catch(console.error);
     }
 
