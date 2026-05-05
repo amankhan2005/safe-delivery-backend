@@ -295,19 +295,34 @@ export async function getPricing(req, res, next) {
 
 export async function updatePricing(req, res, next) {
   try {
-    const { costPerMile } = req.body;
+    const { costPerMile, baseFare, minFare, surgeMultiplier, surgeActive, currency } = req.body;
+
     if (costPerMile === undefined) return err(res, 'costPerMile is required.', 400);
     if (typeof costPerMile !== 'number' || costPerMile <= 0) {
       return err(res, 'costPerMile must be a positive number.', 400);
     }
+    if (baseFare !== undefined && (typeof baseFare !== 'number' || baseFare < 0)) {
+      return err(res, 'baseFare must be a non-negative number.', 400);
+    }
+    if (minFare !== undefined && (typeof minFare !== 'number' || minFare < 0)) {
+      return err(res, 'minFare must be a non-negative number.', 400);
+    }
+    if (surgeMultiplier !== undefined && (typeof surgeMultiplier !== 'number' || surgeMultiplier < 1)) {
+      return err(res, 'surgeMultiplier must be >= 1.', 400);
+    }
 
     let pricing = await Pricing.findOne().sort({ createdAt: -1 });
+    const updates = { costPerMile, updatedBy: req.user._id };
+    if (baseFare !== undefined) updates.baseFare = baseFare;
+    if (minFare !== undefined) updates.minFare = minFare;
+    if (surgeMultiplier !== undefined) updates.surgeMultiplier = surgeMultiplier;
+    if (surgeActive !== undefined) updates.surgeActive = Boolean(surgeActive);
+    if (currency) updates.currency = currency;
 
     if (!pricing) {
-      pricing = new Pricing({ costPerMile, updatedBy: req.user._id });
+      pricing = new Pricing(updates);
     } else {
-      pricing.costPerMile = costPerMile;
-      pricing.updatedBy = req.user._id;
+      Object.assign(pricing, updates);
     }
 
     await pricing.save();
@@ -319,7 +334,7 @@ export async function updatePricing(req, res, next) {
 
 export async function createPromoCode(req, res, next) {
   try {
-    const { code, discount, type, expiresAt, usageLimit } = req.body;
+    const { code, discount, type, expiresAt, usageLimit, userId, minOrderFare } = req.body;
 
     if (!code || !discount || !type) return err(res, 'code, discount, and type are required.', 400);
     if (!['flat', 'percentage'].includes(type)) return err(res, 'type must be flat or percentage.', 400);
@@ -330,8 +345,8 @@ export async function createPromoCode(req, res, next) {
     let pricing = await Pricing.findOne().sort({ createdAt: -1 });
     if (!pricing) return err(res, 'Set pricing first before adding promos.', 400);
 
-    const existing = pricing.promoCodes.find((p) => p.code === code.toUpperCase());
-    if (existing) return err(res, 'Promo code already exists.', 400);
+    const existing = pricing.promoCodes.find((p) => p.code === code.toUpperCase() && p.isActive);
+    if (existing) return err(res, 'Active promo code already exists.', 400);
 
     pricing.promoCodes.push({
       code: code.toUpperCase().trim(),
@@ -339,6 +354,8 @@ export async function createPromoCode(req, res, next) {
       type,
       expiresAt: expiresAt ? new Date(expiresAt) : undefined,
       usageLimit: usageLimit || 100,
+      userId: userId || null,
+      minOrderFare: minOrderFare || 0,
     });
 
     await pricing.save();

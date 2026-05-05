@@ -67,7 +67,12 @@ const orderSchema = new Schema(
     deliveredAt: { type: Date },
     cancelledAt: { type: Date },
     cancellationReason: { type: String },
+    driverRating: { type: Number, min: 1, max: 5, default: null },
+    driverReview: { type: String, default: '' },
+    ratedAt:      { type: Date, default: null },
     notes: { type: String },
+    // Country in which this ride was placed (e.g. 'LIBERIA' | 'INDIA')
+    country: { type: String, uppercase: true, default: null },
   },
   { timestamps: true }
 );

@@ -13,7 +13,12 @@ router.post('/toggle-online', protect, isRider, toggleOnline);
 router.get('/dashboard', protect, isRider, getDashboard);
 router.post('/update-location', protect, isRider, updateLocation);
 router.get('/earnings', protect, isRider, getEarnings);
-router.get('/orders', protect, isRider, getRiderOrders);
+router.get('/orders', protect, isRider, (req, res, next) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  next();
+}, getRiderOrders);
 router.get('/profile', protect, isRider, getRiderProfile);
 router.put('/profile', protect, isRider, updateRiderProfile);
 router.post('/profile/photo', protect, isRider, uploadPhoto, uploadProfilePhoto);

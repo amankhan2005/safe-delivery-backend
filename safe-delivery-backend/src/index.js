@@ -1,7 +1,7 @@
 import 'dotenv/config';
 
-
 import express, { json, urlencoded } from 'express';
+import { createServer } from 'http';
 import helmet from 'helmet';
 import cors from 'cors';
 import morgan from 'morgan';
@@ -10,6 +10,7 @@ import mongoose from 'mongoose';
 
 import connectDB from './config/db.js';
 import { initializeFirebase } from './config/firebase.js';
+import { initSocket } from './services/socketService.js';
 import errorHandler from './middleware/errorHandler.js';
 
 import authRoutes from './routes/auth.js';
@@ -18,57 +19,62 @@ import orderRoutes from './routes/orders.js';
 import adminRoutes from './routes/admin.js';
 import notificationRoutes from './routes/notifications.js';
 import inquiryRoutes from './routes/inquiryRoutes.js';
+import locationRoutes from './routes/location.js';
+
+// Print active country config on startup
+import { getAllowedCountries, getDefaultCountry, COUNTRY_CONFIG } from './config/countries.js';
 
 const app = express();
+const httpServer = createServer(app); // Required for Socket.IO
 
-// ─── SECURITY & MIDDLEWARE ─────────────────────────
+// ─── SECURITY & MIDDLEWARE ────────────────────────────────────────────────────
 
 app.use(helmet());
 
-app.use(cors({
-  origin: '*',  
-}));
+app.use(cors({ origin: '*' }));
 
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 app.use(json({ limit: '10mb' }));
 app.use(urlencoded({ extended: true, limit: '10mb' }));
 
-// ─── RATE LIMIT ─────────────────────────
+// ─── RATE LIMIT ───────────────────────────────────────────────────────────────
 
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: process.env.NODE_ENV === 'production' ? 100 : 1000,
+  max: process.env.NODE_ENV === 'production' ? 300 : 2000,
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-const otpLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000,
-  max: 5,
-});
+const otpLimiter = rateLimit({ windowMs: 5 * 60 * 1000, max: 5 });
 
 app.use(globalLimiter);
 
-app.use('/api/auth/send-login-otp', otpLimiter);
-app.use('/api/auth/resend-otp', otpLimiter);
-app.use('/api/auth/resend-login-otp', otpLimiter);
-app.use('/api/auth/forgot-password', otpLimiter);
-app.use('/api/auth/resend-forgot-otp', otpLimiter);
-app.use('/api/auth/rider-resend-otp', otpLimiter);
-app.use('/api/auth/rider-send-login-otp', otpLimiter);
-app.use('/api/auth/rider-resend-login-otp', otpLimiter);
-app.use('/api/auth/rider-forgot-password', otpLimiter);
-app.use('/api/auth/rider-resend-forgot-otp', otpLimiter);
+const otpPaths = [
+  '/api/auth/send-login-otp',
+  '/api/auth/resend-otp',
+  '/api/auth/resend-login-otp',
+  '/api/auth/forgot-password',
+  '/api/auth/resend-forgot-otp',
+  '/api/auth/rider-resend-otp',
+  '/api/auth/rider-send-login-otp',
+  '/api/auth/rider-resend-login-otp',
+  '/api/auth/rider-forgot-password',
+  '/api/auth/rider-resend-forgot-otp',
+];
+otpPaths.forEach((p) => app.use(p, otpLimiter));
 
-// ─── HEALTH CHECK ─────────────────────────
+// ─── HEALTH CHECK ─────────────────────────────────────────────────────────────
 
 app.get('/health', (req, res) => {
   res.json({
     success: true,
     message: 'Safe Delivery API is running',
     env: process.env.NODE_ENV,
-    dbState: mongoose.connection.readyState, // 1 = connected
+    dbState: mongoose.connection.readyState,
+    allowedCountries: getAllowedCountries(),
+    defaultCountry: getDefaultCountry(),
   });
 });
 
@@ -76,7 +82,7 @@ app.get('/', (req, res) => {
   res.send('🚀 Safe Delivery API Running');
 });
 
-// ─── ROUTES ─────────────────────────
+// ─── ROUTES ───────────────────────────────────────────────────────────────────
 
 app.use('/api/auth', authRoutes);
 app.use('/api/riders', riderRoutes);
@@ -84,8 +90,9 @@ app.use('/api/orders', orderRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/inquiry', inquiryRoutes);
+app.use('/api/location', locationRoutes);   // ← NEW
 
-// ─── 404 ─────────────────────────
+// ─── 404 ─────────────────────────────────────────────────────────────────────
 
 app.use((req, res) => {
   res.status(404).json({
@@ -94,25 +101,34 @@ app.use((req, res) => {
   });
 });
 
-// ─── ERROR HANDLER ─────────────────────────
+// ─── ERROR HANDLER ────────────────────────────────────────────────────────────
 
 app.use(errorHandler);
 
-// ─── START SERVER (IMPORTANT FIX) ─────────────────────────
+// ─── START SERVER ─────────────────────────────────────────────────────────────
 
 const startServer = async () => {
   try {
-    await connectDB();        // ✅ DB connect first
-    initializeFirebase();     // ✅ Firebase init
+    await connectDB();
+    initializeFirebase();
+
+    // Init Socket.IO on the HTTP server
+    initSocket(httpServer);
 
     const PORT = process.env.PORT || 5000;
 
-    app.listen(PORT, () => {
+    httpServer.listen(PORT, () => {
       console.log(`\n🚀 Safe Delivery API running on port ${PORT}`);
       console.log(`🌐 http://localhost:${PORT}`);
-      console.log(`💚 Health: /health\n`);
-    });
+      console.log(`💚 Health: /health`);
 
+      const allowed = getAllowedCountries();
+      allowed.forEach((key) => {
+        const c = COUNTRY_CONFIG[key];
+        console.log(`🌍 Country: ${c.name} [${c.environment.toUpperCase()}]`);
+      });
+      console.log('');
+    });
   } catch (error) {
     console.error('❌ Server start failed:', error.message);
     process.exit(1);
@@ -122,6 +138,3 @@ const startServer = async () => {
 startServer();
 
 export default app;
-
-
- 

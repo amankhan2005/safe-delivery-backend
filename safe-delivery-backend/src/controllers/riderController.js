@@ -3,6 +3,7 @@ import Order from '../models/orderModel.js';
 import { ok, err } from '../utils/responseHelper.js';
 import { notifyAdminNewRider } from '../services/notificationService.js';
 import User from '../models/userModel.js';
+import { emitToUser } from '../services/socketService.js';
 import cloudinaryConfig from '../config/cloudinary.js';
 
 // ─── KYC ────────────────────────────────────────────────────────
@@ -136,12 +137,25 @@ export async function getDashboard(req, res, next) {
 
 export async function updateLocation(req, res, next) {
   try {
-    const { lat, lng } = req.body;
+    const { lat, lng, orderId } = req.body;
     if (lat === undefined || lng === undefined) return err(res, 'lat and lng are required.', 400);
 
     await Rider.findByIdAndUpdate(req.user._id, {
       currentLocation: { lat: parseFloat(lat), lng: parseFloat(lng) },
     });
+
+    // If orderId is provided, forward live location to the customer via socket
+    if (orderId) {
+      const order = await Order.findById(orderId).select('customerId status').lean();
+      if (order && ['assigned', 'picked_up', 'in_transit'].includes(order.status)) {
+        emitToUser(order.customerId.toString(), 'rider:location', {
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+          riderId: req.user._id,
+          orderId,
+        });
+      }
+    }
 
     return ok(res, {}, 'Location updated.');
   } catch (error) {
@@ -173,7 +187,7 @@ export async function getEarnings(req, res, next) {
       riderId,
       status: 'delivered',
       deliveredAt: { $gte: startDate },
-    }).select('fare deliveredAt distanceMiles');
+    }).select('fare deliveredAt distanceMiles pickup drop status').sort({ deliveredAt: -1 });
 
     const totalEarned = orders.reduce((sum, o) => sum + o.fare, 0);
     const totalMiles = orders.reduce((sum, o) => sum + o.distanceMiles, 0);
@@ -197,9 +211,25 @@ export async function getEarnings(req, res, next) {
 
 export async function getRiderOrders(req, res, next) {
   try {
-    const orders = await Order.find({ riderId: req.user._id })
+    const rider = await Rider.findById(req.user._id).select('isOnline status').lean();
+
+    // Rider ke apne assigned/active orders
+    const myOrders = await Order.find({ riderId: req.user._id })
       .populate('customerId', 'name phone')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
+
+    // Agar rider online hai to searching orders bhi do
+    let searchingOrders = [];
+    if (rider?.isOnline && rider?.status === 'approved') {
+      searchingOrders = await Order.find({ status: 'searching', $or: [{ riderId: null }, { riderId: { $exists: false } }] })
+        .populate('customerId', 'name phone')
+        .sort({ createdAt: -1 })
+        .lean();
+    }
+
+    // Combine — searching orders pehle, phir rider ke apne orders
+    const orders = [...searchingOrders, ...myOrders];
 
     return ok(res, { orders }, 'Orders fetched.');
   } catch (error) {

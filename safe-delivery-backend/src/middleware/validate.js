@@ -13,22 +13,12 @@ export const validateSignup = (req, res, next) => {
   if (!email || !email.trim()) missing.push('email');
   if (!password) missing.push('password');
 
-  if (missing.length > 0) {
-    return err(res, `Missing required fields: ${missing.join(', ')}.`, 400);
-  }
-
-  if (password.length < 6) {
-    return err(res, 'Password must be at least 6 characters long.', 400);
-  }
-
-  if (!EMAIL_REGEX.test(email.trim())) {
-    return err(res, 'Please provide a valid email address.', 400);
-  }
+  if (missing.length > 0) return err(res, `Missing required fields: ${missing.join(', ')}.`, 400);
+  if (password.length < 6) return err(res, 'Password must be at least 6 characters.', 400);
+  if (!EMAIL_REGEX.test(email.trim())) return err(res, 'Please provide a valid email address.', 400);
 
   const normalized = normalizePhone(phone);
-  if (!isValidLiberiaPhone(normalized)) {
-    return err(res, 'Please provide a valid Liberia phone number.', 400);
-  }
+  if (!isValidLiberiaPhone(normalized)) return err(res, 'Please provide a valid Liberia phone number.', 400);
 
   req.body.phone = normalized;
   req.body.email = email.trim().toLowerCase();
@@ -40,13 +30,8 @@ export const validateLogin = (req, res, next) => {
   const { password } = req.body;
   let { identifier } = req.body;
 
-  if (!identifier || !identifier.trim()) {
-    return err(res, 'Phone number or email is required.', 400);
-  }
-
-  if (!password) {
-    return err(res, 'Password is required.', 400);
-  }
+  if (!identifier || !identifier.trim()) return err(res, 'Phone number or email is required.', 400);
+  if (!password) return err(res, 'Password is required.', 400);
 
   const trimmed = identifier.trim();
   req.body.identifier = EMAIL_REGEX.test(trimmed)
@@ -58,26 +43,17 @@ export const validateLogin = (req, res, next) => {
 
 export const validateOTPVerify = (req, res, next) => {
   const { otp } = req.body;
-
   if (!otp || !/^\d{4}$/.test(String(otp).trim())) {
     return err(res, 'A valid 4-digit OTP is required.', 400);
   }
-
   req.body.otp = String(otp).trim();
   next();
 };
 
 export const validateResetPassword = (req, res, next) => {
   const { resetToken, newPassword } = req.body;
-
-  if (!resetToken || !resetToken.trim()) {
-    return err(res, 'resetToken is required.', 400);
-  }
-
-  if (!newPassword || newPassword.length < 6) {
-    return err(res, 'newPassword must be at least 6 characters.', 400);
-  }
-
+  if (!resetToken || !resetToken.trim()) return err(res, 'resetToken is required.', 400);
+  if (!newPassword || newPassword.length < 6) return err(res, 'newPassword must be at least 6 characters.', 400);
   next();
 };
 
@@ -90,32 +66,20 @@ export const validateOrder = (req, res, next) => {
 
   const pickupFields = ['address', 'lat', 'lng', 'contactName', 'contactPhone'];
   for (const field of pickupFields) {
-    if (
-      pickup[field] === undefined ||
-      pickup[field] === null ||
-      pickup[field] === ''
-    ) {
+    if (pickup[field] === undefined || pickup[field] === null || pickup[field] === '') {
       return err(res, `Pickup ${field} is required.`, 400);
     }
   }
 
   const dropFields = ['address', 'lat', 'lng', 'contactName', 'contactPhone'];
   for (const field of dropFields) {
-    if (
-      drop[field] === undefined ||
-      drop[field] === null ||
-      drop[field] === ''
-    ) {
+    if (drop[field] === undefined || drop[field] === null || drop[field] === '') {
       return err(res, `Drop ${field} is required.`, 400);
     }
   }
 
   if (!parcelWeight || !validWeights.includes(parcelWeight)) {
-    return err(
-      res,
-      `parcelWeight must be one of: ${validWeights.join(', ')}.`,
-      400
-    );
+    return err(res, `parcelWeight must be one of: ${validWeights.join(', ')}.`, 400);
   }
 
   next();
