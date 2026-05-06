@@ -21,20 +21,16 @@ import notificationRoutes from './routes/notifications.js';
 import inquiryRoutes from './routes/inquiryRoutes.js';
 import locationRoutes from './routes/location.js';
 
-// Print active country config on startup
 import { getAllowedCountries, getDefaultCountry, COUNTRY_CONFIG } from './config/countries.js';
 
 const app = express();
-const httpServer = createServer(app); // Required for Socket.IO
+const httpServer = createServer(app);
 
 // ─── SECURITY & MIDDLEWARE ────────────────────────────────────────────────────
 
 app.use(helmet());
-
 app.use(cors({ origin: '*' }));
-
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
-
 app.use(json({ limit: '10mb' }));
 app.use(urlencoded({ extended: true, limit: '10mb' }));
 
@@ -65,16 +61,17 @@ const otpPaths = [
 ];
 otpPaths.forEach((p) => app.use(p, otpLimiter));
 
-// ─── HEALTH CHECK ─────────────────────────────────────────────────────────────
+// ─── HEALTH CHECK — used by frontend ping + Render uptime check ───────────────
 
 app.get('/health', (req, res) => {
   res.json({
-    success: true,
-    message: 'Safe Delivery API is running',
-    env: process.env.NODE_ENV,
-    dbState: mongoose.connection.readyState,
+    success:          true,
+    message:          'Safe Delivery API is running',
+    env:              process.env.NODE_ENV,
+    dbState:          mongoose.connection.readyState,
+    uptime:           Math.floor(process.uptime()),
     allowedCountries: getAllowedCountries(),
-    defaultCountry: getDefaultCountry(),
+    defaultCountry:   getDefaultCountry(),
   });
 });
 
@@ -84,13 +81,13 @@ app.get('/', (req, res) => {
 
 // ─── ROUTES ───────────────────────────────────────────────────────────────────
 
-app.use('/api/auth', authRoutes);
-app.use('/api/riders', riderRoutes);
-app.use('/api/orders', orderRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/auth',          authRoutes);
+app.use('/api/riders',        riderRoutes);
+app.use('/api/orders',        orderRoutes);
+app.use('/api/admin',         adminRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/inquiry', inquiryRoutes);
-app.use('/api/location', locationRoutes);   // ← NEW
+app.use('/api/inquiry',       inquiryRoutes);
+app.use('/api/location',      locationRoutes);
 
 // ─── 404 ─────────────────────────────────────────────────────────────────────
 
@@ -111,13 +108,16 @@ const startServer = async () => {
   try {
     await connectDB();
     initializeFirebase();
-
-    // Init Socket.IO on the HTTP server
     initSocket(httpServer);
 
     const PORT = process.env.PORT || 5000;
 
     httpServer.listen(PORT, () => {
+      // FIX: increase timeouts so Render doesn't drop long-running requests
+      // Frontend retry logic relies on these being >= 30s
+      httpServer.keepAliveTimeout = 120000;   // 2 min
+      httpServer.headersTimeout   = 121000;   // must be > keepAliveTimeout
+
       console.log(`\n🚀 Safe Delivery API running on port ${PORT}`);
       console.log(`🌐 http://localhost:${PORT}`);
       console.log(`💚 Health: /health`);
