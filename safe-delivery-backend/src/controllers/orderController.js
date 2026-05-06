@@ -324,13 +324,27 @@ export async function createOrder(req, res, next) {
 // ─── ACCEPT ORDER ─────────────────────────────────────────────────────────────
 export async function acceptOrder(req, res, next) {
   try {
+    const existing = await Order.findById(req.params.id).select('status riderId');
+    if (!existing) return err(res, 'Order not found.', 404);
+
+    if (existing.status === 'assigned' && existing.riderId?.toString() === req.user._id.toString()) {
+      const o = await Order.findById(req.params.id).populate('customerId', 'name phone fcmToken');
+      const ri = await Rider.findById(req.user._id).select('name phone vehicle profilePhoto rating');
+      return ok(res, { order: o, rider: ri }, 'Order already accepted by you.');
+    }
+
+    if (existing.status !== 'searching') {
+      const msgs = { assigned: 'This order was already accepted by another rider.', picked_up: 'This order has already been picked up.', in_transit: 'This order is already in transit.', delivered: 'This order has already been delivered.', cancelled: 'This order was cancelled.' };
+      return err(res, msgs[existing.status] || 'Order is no longer available.', 409);
+    }
+
     const order = await Order.findOneAndUpdate(
       { _id: req.params.id, status: 'searching' },
       { $set: { riderId: req.user._id, status: 'assigned', riderAssignedAt: new Date() } },
       { new: true }
     ).populate('customerId', 'name phone fcmToken');
 
-    if (!order) return err(res, 'Order is no longer available.', 400);
+    if (!order) return err(res, 'This order was just accepted by another rider.', 409);
 
     const riderInfo = await Rider.findById(req.user._id).select('name phone vehicle profilePhoto rating');
     const eta = Math.ceil(order.distanceMiles * 3);
@@ -613,5 +627,28 @@ export async function submitDriverRating(req, res, next) {
     }
 
     return ok(res, { rating, review: order.driverReview }, 'Rating submitted. Thank you!');
+  } catch (error) { next(error); }
+}
+export async function deleteUserAccount(req, res, next) {
+  try {
+    const { password } = req.body;
+    if (!password) return err(res, 'Password required.', 400);
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) return err(res, 'Not found.', 404);
+    if (!(await user.matchPassword(password))) return err(res, 'Incorrect password.', 401);
+    await User.findByIdAndUpdate(req.user._id, { $set: { name: 'Deleted User', email: `deleted_${req.user._id}@deleted.invalid`, phone: `deleted_${req.user._id}`, isDeleted: true, deletedAt: new Date(), fcmToken: null } });
+    return ok(res, {}, 'Account deleted.');
+  } catch (error) { next(error); }
+}
+
+export async function deleteRiderAccount(req, res, next) {
+  try {
+    const { password } = req.body;
+    if (!password) return err(res, 'Password required.', 400);
+    const rider = await Rider.findById(req.user._id).select('+password');
+    if (!rider) return err(res, 'Not found.', 404);
+    if (!(await rider.matchPassword(password))) return err(res, 'Incorrect password.', 401);
+    await Rider.findByIdAndUpdate(req.user._id, { $set: { name: 'Deleted Rider', email: `deleted_rider_${req.user._id}@deleted.invalid`, phone: `deleted_rider_${req.user._id}`, isDeleted: true, deletedAt: new Date(), fcmToken: null, isOnline: false, status: 'deleted' } });
+    return ok(res, {}, 'Rider account deleted.');
   } catch (error) { next(error); }
 }

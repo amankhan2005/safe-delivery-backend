@@ -708,3 +708,73 @@ export async function riderChangePassword(req, res, next) {
     next(error);
   }
 }
+// ─── DELETE ACCOUNT — Customer ────────────────────────────────────────────────
+export async function deleteUserAccount(req, res, next) {
+  try {
+    const { password } = req.body;
+    if (!password) return err(res, 'Password is required to delete account.', 400);
+
+    const user = await User.findById(req.user._id).select('+password');
+    if (!user) return err(res, 'Account not found.', 404);
+
+    if (user.isDeleted) return err(res, 'Account already deleted.', 400);
+
+    const isMatch = await user.matchPassword(password);
+    if (!isMatch) return err(res, 'Incorrect password. Account not deleted.', 401);
+
+    // Anonymize — allow re-signup with same credentials after deletion
+    await User.findByIdAndUpdate(req.user._id, {
+      $set: {
+        name:            'Deleted User',
+        email:           `deleted_${req.user._id}@deleted.invalid`,
+        phone:           `deleted_${req.user._id}`,
+        isDeleted:       true,
+        deletedAt:       new Date(),
+        fcmToken:        null,
+        isPhoneVerified: false,
+        isEmailVerified: false,
+        password:        'DELETED',
+      }
+    });
+
+    console.log(`[DeleteAccount] Customer ${req.user._id} deleted their account.`);
+    return ok(res, {}, 'Account deleted successfully. All your data has been removed.');
+  } catch (error) {
+    next(error);
+  }
+}
+
+// ─── DELETE ACCOUNT — Rider ───────────────────────────────────────────────────
+export async function deleteRiderAccount(req, res, next) {
+  try {
+    const { password } = req.body;
+    if (!password) return err(res, 'Password is required to delete account.', 400);
+
+    const rider = await Rider.findById(req.user._id).select('+password');
+    if (!rider) return err(res, 'Account not found.', 404);
+
+    if (rider.isDeleted) return err(res, 'Account already deleted.', 400);
+
+    const isMatch = await rider.matchPassword(password);
+    if (!isMatch) return err(res, 'Incorrect password. Account not deleted.', 401);
+
+    await Rider.findByIdAndUpdate(req.user._id, {
+      $set: {
+        name:      'Deleted Rider',
+        email:     `deleted_rider_${req.user._id}@deleted.invalid`,
+        phone:     `deleted_rider_${req.user._id}`,
+        isDeleted: true,
+        deletedAt: new Date(),
+        fcmToken:  null,
+        isOnline:  false,
+        status:    'deleted',
+        password:  'DELETED',
+      }
+    });
+
+    console.log(`[DeleteAccount] Rider ${req.user._id} deleted their account.`);
+    return ok(res, {}, 'Rider account deleted successfully.');
+  } catch (error) {
+    next(error);
+  }
+}

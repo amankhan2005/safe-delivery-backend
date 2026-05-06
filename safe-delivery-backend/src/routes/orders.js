@@ -21,6 +21,8 @@ import { validateOrder } from '../middleware/validate.js';
 import { uploadPhoto } from '../middleware/upload.js';
 import Pricing from '../models/pricingModel.js';
 
+const noCache = (req, res, next) => { res.set('Cache-Control','no-store,no-cache,must-revalidate'); res.set('Pragma','no-cache'); res.set('Expires','0'); next(); };
+
 // ── Public pricing (no auth needed) ──────────────────────────────────────────
 router.get('/pricing', async (req, res) => {
   try {
@@ -62,7 +64,7 @@ router.get('/pricing', async (req, res) => {
 // ── Protected routes ──────────────────────────────────────────────────────────
 router.post('/calculate-fare', protect, isCustomer, calculateFare);
 router.post('/create', protect, isCustomer, validateOrder, createOrder);
-router.get('/my-orders', protect, isCustomer, getMyOrders);
+router.get('/my-orders', protect, isCustomer, noCache, getMyOrders);
 
 router.post('/:id/accept', protect, isRider, acceptOrder);
 router.post('/:id/reject', protect, isRider, rejectOrder);
@@ -72,11 +74,11 @@ router.post('/:id/drop-photo', protect, isRider, uploadPhoto, uploadDropPhoto);
 router.post('/:id/verify-otp', protect, isRider, verifyDeliveryOTP);
 
 router.post('/:id/cancel', protect, isCustomer, cancelOrder);
-router.get('/:id/otp', protect, isCustomer, getDeliveryOTP);
+router.get('/:id/otp', protect, isCustomer, noCache, getDeliveryOTP);
 router.get('/:id/rider-location', protect, isCustomer, getRiderLocation);
 
 router.post('/:id/rate-driver', protect, isCustomer, submitDriverRating);
 
-router.get('/:id', protect, getOrder);
+router.get('/:id', protect, noCache, getOrder);
 
 export default router;

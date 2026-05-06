@@ -25,8 +25,9 @@ import {
   riderResetPassword,
   riderChangePassword,
 } from '../controllers/authController.js';
+import { deleteUserAccount, deleteRiderAccount } from '../controllers/orderController.js';
 
-import { protect, isRider } from '../middleware/auth.js';
+import { protect, isRider, isCustomer } from '../middleware/auth.js';
 import { validateSignup, validateLogin, validateResetPassword } from '../middleware/validate.js';
 import { uploadSelfie } from '../middleware/upload.js';
 
@@ -55,5 +56,9 @@ router.post('/rider-resend-forgot-otp', riderResendForgotOTP);
 router.post('/rider-verify-reset-otp',  riderVerifyResetOTP);
 router.post('/rider-reset-password',    validateResetPassword, riderResetPassword);
 router.post('/rider-change-password',   protect, isRider, riderChangePassword);
+
+// Delete account
+router.delete('/delete-account',       protect, isCustomer, deleteUserAccount);
+router.delete('/rider-delete-account', protect, isRider,    deleteRiderAccount);
 
 export default router;
