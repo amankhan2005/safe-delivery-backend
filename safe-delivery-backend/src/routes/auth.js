@@ -24,8 +24,9 @@ import {
   riderVerifyResetOTP,
   riderResetPassword,
   riderChangePassword,
+  deleteUserAccount,
+  deleteRiderAccount,
 } from '../controllers/authController.js';
-import { deleteUserAccount, deleteRiderAccount } from '../controllers/orderController.js';
 
 import { protect, isRider, isCustomer } from '../middleware/auth.js';
 import { validateSignup, validateLogin, validateResetPassword } from '../middleware/validate.js';
@@ -57,7 +58,7 @@ router.post('/rider-verify-reset-otp',  riderVerifyResetOTP);
 router.post('/rider-reset-password',    validateResetPassword, riderResetPassword);
 router.post('/rider-change-password',   protect, isRider, riderChangePassword);
 
-// Delete account
+// ── Delete account
 router.delete('/delete-account',       protect, isCustomer, deleteUserAccount);
 router.delete('/rider-delete-account', protect, isRider,    deleteRiderAccount);
 
