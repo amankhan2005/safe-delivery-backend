@@ -1,31 +1,23 @@
-/**
- * expoPushService.js
- * NEW FILE — Backend Expo Push Notification Service
- *
- * Sends push notifications to Customer and Rider apps via Expo Push API.
- * Uses plain axios (already in your dependencies) — no new packages needed.
- *
- * Covers:
- *   - Rider: New order arrived (background/closed app)
- *   - Customer: Rider accepted, parcel picked up, delivered, cancelled
- *   - Admin: Broadcast to all riders / customers / both
- */
+// ============================================================
+// FILE: src/services/expoPushService.js  (BACKEND)
+// COPY THIS ENTIRE FILE — replaces existing expoPushService.js
+// ============================================================
 
 import axios from 'axios';
-import Rider from '../models/riderModel.js';
-import User  from '../models/userModel.js';
+import Rider  from '../models/riderModel.js';
+import User   from '../models/userModel.js';
 
 const EXPO_PUSH_URL = 'https://exp.host/--/api/v2/push/send';
-const CHUNK_SIZE    = 100; // Expo max per request
+const CHUNK_SIZE    = 100;
 
-// ─── TOKEN VALIDATION ────────────────────────────────────────────────────────
+// ─── TOKEN VALIDATION ─────────────────────────────────────────────────────────
 
 export function isValidExpoPushToken(token) {
   if (!token || typeof token !== 'string') return false;
   return token.startsWith('ExponentPushToken[') || token.startsWith('ExpoPushToken[');
 }
 
-// ─── CORE SENDER ─────────────────────────────────────────────────────────────
+// ─── CORE SENDER ──────────────────────────────────────────────────────────────
 
 export async function sendExpoPushNotifications(messages) {
   const msgs  = Array.isArray(messages) ? messages : [messages];
@@ -44,7 +36,7 @@ export async function sendExpoPushNotifications(messages) {
       const data = res.data?.data ?? [];
       tickets.push(...data);
 
-      // Auto-remove invalid tokens
+      // Auto-remove stale tokens
       for (let j = 0; j < data.length; j++) {
         if (data[j]?.status === 'error' && data[j]?.details?.error === 'DeviceNotRegistered') {
           removeExpoPushToken(chunk[j]?.to).catch(() => {});
@@ -58,7 +50,7 @@ export async function sendExpoPushNotifications(messages) {
   return tickets;
 }
 
-// ─── SINGLE SEND HELPER ───────────────────────────────────────────────────────
+// ─── SINGLE SEND ──────────────────────────────────────────────────────────────
 
 export async function sendOnePush(token, title, body, data = {}, options = {}) {
   if (!isValidExpoPushToken(token)) return null;
@@ -75,7 +67,7 @@ export async function sendOnePush(token, title, body, data = {}, options = {}) {
   return tickets[0] ?? null;
 }
 
-// ─── MULTI SEND HELPER ────────────────────────────────────────────────────────
+// ─── MULTI SEND ───────────────────────────────────────────────────────────────
 
 export async function sendMultiPush(tokens, title, body, data = {}, options = {}) {
   const unique = [...new Set(tokens)].filter(isValidExpoPushToken);
@@ -92,15 +84,38 @@ export async function sendMultiPush(tokens, title, body, data = {}, options = {}
   })));
 }
 
-// ─── RIDER NOTIFICATIONS ──────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// RIDER NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
 
-/** New order available — sent when customer places order (rider app closed/background) */
-export async function pushNewOrderToRider(expoPushToken, { orderId, fare, distanceMiles }) {
+/**
+ * NEW ORDER — sent when customer places an order
+ *
+ * CHANGE vs original: added customerName, pickupAddress, dropAddress
+ * so the IncomingOrderScreen can display them without an extra API call.
+ */
+export async function pushNewOrderToRider(expoPushToken, {
+  orderId,
+  fare,
+  distanceMiles,
+  customerName  = '',
+  pickupAddress = '',
+  dropAddress   = '',
+}) {
   return sendOnePush(
     expoPushToken,
     '🆕 New Delivery Request',
-    `${distanceMiles} mi — ₹${fare}  |  Tap to view`,
-    { type: 'NEW_ORDER', orderId: String(orderId), fare: String(fare), screen: 'IncomingOrder' },
+    `${distanceMiles} mi — ₹${fare}  |  Tap to Accept`,
+    {
+      type:          'NEW_ORDER',
+      orderId:       String(orderId),
+      fare:          String(fare),
+      miles:         String(distanceMiles),
+      customerName,
+      pickupAddress,
+      dropAddress,
+      screen:        'IncomingOrder',
+    },
     { channelId: 'new_order', priority: 'high' }
   );
 }
@@ -116,7 +131,9 @@ export async function pushOrderCancelledToRider(expoPushToken, { orderId }) {
   );
 }
 
-// ─── CUSTOMER NOTIFICATIONS ───────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// CUSTOMER NOTIFICATIONS
+// ─────────────────────────────────────────────────────────────────────────────
 
 /** Rider accepted the order */
 export async function pushRiderAssigned(expoPushToken, { riderName, eta, orderId }) {
@@ -124,7 +141,13 @@ export async function pushRiderAssigned(expoPushToken, { riderName, eta, orderId
     expoPushToken,
     '🛵 Rider Assigned!',
     `${riderName} is on the way — ETA ${eta} min`,
-    { type: 'RIDER_ASSIGNED', orderId: String(orderId), riderName, eta: String(eta), screen: 'Track' },
+    {
+      type:      'RIDER_ASSIGNED',
+      orderId:   String(orderId),
+      riderName,
+      eta:       String(eta),
+      screen:    'Track',
+    },
     { channelId: 'order_updates', priority: 'high' }
   );
 }
@@ -134,13 +157,13 @@ export async function pushParcelPickedUp(expoPushToken, { orderId }) {
   return sendOnePush(
     expoPushToken,
     '📦 Parcel Picked Up',
-    'Your parcel is on its way to you!',
+    'Your parcel is on its way!',
     { type: 'PICKED_UP', orderId: String(orderId), screen: 'Track' },
     { channelId: 'order_updates', priority: 'high' }
   );
 }
 
-/** Rider started transit (on the way to drop) */
+/** Rider started transit */
 export async function pushOnTheWay(expoPushToken, { orderId, eta }) {
   return sendOnePush(
     expoPushToken,
@@ -173,7 +196,9 @@ export async function pushOrderCancelled(expoPushToken, { orderId, reason }) {
   );
 }
 
-// ─── ADMIN BROADCAST ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// ADMIN BROADCAST
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function broadcastPushNotification(audience, title, body, data = {}) {
   const tokens = [];

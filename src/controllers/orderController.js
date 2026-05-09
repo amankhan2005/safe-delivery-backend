@@ -1,16 +1,22 @@
-import Order from '../models/orderModel.js';
-import Rider from '../models/riderModel.js';
+// ============================================================
+// FILE: src/controllers/orderController.js  (BACKEND)
+// COPY THIS ENTIRE FILE — replaces existing orderController.js
+// KEY CHANGE: notifyNewOrder + pushNewOrderToRider now pass
+//   customerName, pickupAddress, dropAddress to rider
+// ============================================================
+
+import Order   from '../models/orderModel.js';
+import Rider   from '../models/riderModel.js';
 import Pricing from '../models/pricingModel.js';
-import { ok, err } from '../utils/responseHelper.js';
+import { ok, err }                          from '../utils/responseHelper.js';
 import { getDistance, calculateFare, applyPromo } from '../utils/fareCalculator.js';
-import { generateOTP } from '../utils/otpGenerator.js';
-import User from '../models/userModel.js';
+import { generateOTP }                      from '../utils/otpGenerator.js';
+import User                                 from '../models/userModel.js';
 import {
   notifyNewOrder, notifyRiderFound, notifyPickedUp,
   notifyArriving, notifyDelivered, notifyRiderOrderCancelled,
 } from '../services/notificationService.js';
 
-// ── NEW: Expo Push Notifications ──────────────────────────────────────────────
 import {
   pushNewOrderToRider,
   pushRiderAssigned,
@@ -20,37 +26,37 @@ import {
   pushOrderCancelledToRider,
 } from '../services/expoPushService.js';
 
-import { validateRideCountries } from '../services/locationService.js';
+import { validateRideCountries }          from '../services/locationService.js';
 import { broadcastRideRequest, emitToUser } from '../services/socketService.js';
 
 // ─── CONSTANTS ────────────────────────────────────────────────────────────────
-const AUTO_CANCEL_MS    = 5 * 60 * 1000;
-const ORDER_COOLDOWN_MS = 2 * 60 * 1000;
+const AUTO_CANCEL_MS     = 5 * 60 * 1000;
+const ORDER_COOLDOWN_MS  = 2 * 60 * 1000;
 const MAX_DISTANCE_MILES = 80;
 const RIDER_RADIUS_MILES = 25;
 
 const userLastOrderTime = new Map();
 
-// ─── HELPERS ─────────────────────────────────────────────────────────────────
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
 function getFareOptions(pricing) {
   return {
-    baseFare: pricing.baseFare || 0,
-    minFare: pricing.minFare || 2.0,
+    baseFare:        pricing.baseFare       || 0,
+    minFare:         pricing.minFare        || 2.0,
     surgeMultiplier: pricing.surgeActive ? (pricing.surgeMultiplier || 1.0) : 1.0,
   };
 }
 
 function haversineMiles(lat1, lng1, lat2, lng2) {
-  const R = 3958.8;
+  const R    = 3958.8;
   const toRad = (v) => (v * Math.PI) / 180;
-  const dLat = toRad(lat2 - lat1);
-  const dLng = toRad(lng2 - lng1);
-  const a = Math.sin(dLat / 2) ** 2
-    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  const dLat  = toRad(lat2 - lat1);
+  const dLng  = toRad(lng2 - lng1);
+  const a     = Math.sin(dLat / 2) ** 2
+              + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ─── AUTO CANCEL ─────────────────────────────────────────────────────────────
+// ─── AUTO CANCEL ──────────────────────────────────────────────────────────────
 function scheduleAutoCancel(orderId, customerId) {
   setTimeout(async () => {
     try {
@@ -61,8 +67,8 @@ function scheduleAutoCancel(orderId, customerId) {
       );
       if (order) {
         emitToUser(customerId.toString(), 'ride:cancelled', {
-          orderId: order._id,
-          message: 'No rider found. Order auto-cancelled. Please try again.',
+          orderId:    order._id,
+          message:    'No rider found. Order auto-cancelled. Please try again.',
           autoCancel: true,
         });
         console.log(`[AutoCancel] Order ${orderId} auto-cancelled.`);
@@ -71,7 +77,7 @@ function scheduleAutoCancel(orderId, customerId) {
   }, AUTO_CANCEL_MS);
 }
 
-// ─── FARE CALCULATION ────────────────────────────────────────────────────────
+// ─── FARE CALCULATION ─────────────────────────────────────────────────────────
 const _calculateFare = async (req, res, next) => {
   try {
     const { pickupLat, pickupLng, dropLat, dropLng, promoCode } = req.body;
@@ -86,7 +92,7 @@ const _calculateFare = async (req, res, next) => {
 
     const countryCheck = await validateRideCountries(
       parseFloat(pickupLat), parseFloat(pickupLng),
-      parseFloat(dropLat), parseFloat(dropLng)
+      parseFloat(dropLat),   parseFloat(dropLng)
     );
     if (!countryCheck.valid) return err(res, countryCheck.error, 422);
 
@@ -95,7 +101,7 @@ const _calculateFare = async (req, res, next) => {
 
     const distanceMiles = await getDistance(
       parseFloat(pickupLat), parseFloat(pickupLng),
-      parseFloat(dropLat), parseFloat(dropLng)
+      parseFloat(dropLat),   parseFloat(dropLng)
     );
 
     if (distanceMiles > MAX_DISTANCE_MILES) {
@@ -106,12 +112,11 @@ const _calculateFare = async (req, res, next) => {
       return err(res, 'Could not calculate a valid distance. Please check your locations.', 400);
     }
 
-    const fareOptions = getFareOptions(pricing);
-    let fare = calculateFare(distanceMiles, pricing.costPerMile, fareOptions);
+    const fareOptions    = getFareOptions(pricing);
+    let fare             = calculateFare(distanceMiles, pricing.costPerMile, fareOptions);
     const baseFareAmount = fare;
-
-    let promoDiscount = 0;
-    let promoDetails  = null;
+    let promoDiscount    = 0;
+    let promoDetails     = null;
 
     if (promoCode) {
       const promo = pricing.promoCodes.find(
@@ -128,8 +133,8 @@ const _calculateFare = async (req, res, next) => {
         }
         const { finalFare, discountAmount } = applyPromo(fare, promo.discount, promo.type);
         promoDiscount = discountAmount;
-        fare = finalFare;
-        promoDetails = { code: promo.code, discount: promo.discount, type: promo.type, minOrderFare: promo.minOrderFare || 0 };
+        fare          = finalFare;
+        promoDetails  = { code: promo.code, discount: promo.discount, type: promo.type, minOrderFare: promo.minOrderFare || 0 };
       } else {
         return err(res, 'Invalid or expired promo code.', 400);
       }
@@ -137,17 +142,17 @@ const _calculateFare = async (req, res, next) => {
 
     return ok(res, {
       distanceMiles,
-      baseFare: baseFareAmount,
+      baseFare:        baseFareAmount,
       promoDiscount,
       fare,
       promoDetails,
-      costPerMile: pricing.costPerMile,
-      minFare: pricing.minFare,
-      baseFareConfig: pricing.baseFare,
-      surgeActive: pricing.surgeActive,
+      costPerMile:     pricing.costPerMile,
+      minFare:         pricing.minFare,
+      baseFareConfig:  pricing.baseFare,
+      surgeActive:     pricing.surgeActive,
       surgeMultiplier: pricing.surgeActive ? pricing.surgeMultiplier : 1.0,
-      currency: pricing.currency,
-      pickupCountry: countryCheck.pickupCountry,
+      currency:        pricing.currency,
+      pickupCountry:   countryCheck.pickupCountry,
     }, 'Fare calculated.');
   } catch (error) { next(error); }
 };
@@ -267,22 +272,21 @@ export async function createOrder(req, res, next) {
       parcelWeight,
       distanceMiles,
       fare,
-      promoCode: appliedPromoCode,
+      promoCode:    appliedPromoCode,
       promoDiscount,
       deliveryOTP,
       notes,
-      country: countryCheck.pickupCountry,
+      country:      countryCheck.pickupCountry,
     });
 
     userLastOrderTime.set(userId, Date.now());
     scheduleAutoCancel(order._id, req.user._id);
 
-    // ── CHANGED: added expoPushToken to .select() ─────────────────────────────
-    const allRiders    = await Rider.find({ isOnline: true, status: 'approved' })
+    const allRiders = await Rider.find({ isOnline: true, status: 'approved' })
       .select('currentLocation fcmToken expoPushToken _id')
       .lean();
 
-    const nearbyRiders = allRiders.filter(rider => {
+    const nearbyRiders = allRiders.filter((rider) => {
       if (!rider.currentLocation?.lat || !rider.currentLocation?.lng) return false;
       const dist = haversineMiles(
         pickup.lat, pickup.lng,
@@ -291,21 +295,35 @@ export async function createOrder(req, res, next) {
       return dist <= RIDER_RADIUS_MILES;
     });
 
+    // Populate customer name for the notification payload
+    await order.populate('customerId', 'name').catch(() => {});
+    const customerName  = order.customerId?.name ?? 'Customer';
+    const pickupAddress = pickup?.address         ?? '';
+    const dropAddress   = drop?.address           ?? '';
+
     const riderIds = [];
     for (const rider of nearbyRiders) {
       riderIds.push(rider._id);
 
-      // existing FCM — unchanged
+      // ── FCM (data-only) — fires rider background task even when app is KILLED
       if (rider.fcmToken) {
-        notifyNewOrder(rider.fcmToken, fare, distanceMiles).catch(console.error);
+        notifyNewOrder(rider.fcmToken, fare, distanceMiles, {
+          orderId: String(order._id),
+          customerName,
+          pickupAddress,
+          dropAddress,
+        }).catch(console.error);
       }
 
-      // NEW: Expo push → notification bar when rider app is closed/background
+      // ── Expo Push — foreground/background via Expo's infrastructure
       if (rider.expoPushToken) {
         pushNewOrderToRider(rider.expoPushToken, {
-          orderId: order._id,
+          orderId:      order._id,
           fare,
           distanceMiles,
+          customerName,
+          pickupAddress,
+          dropAddress,
         }).catch(console.error);
       }
     }
@@ -331,31 +349,25 @@ export async function createOrder(req, res, next) {
 // ─── ACCEPT ORDER ─────────────────────────────────────────────────────────────
 export async function acceptOrder(req, res, next) {
   try {
-    // ── Single atomic update — no race condition ──────────────────────────────
-    // CHANGED: added expoPushToken to populate
     const order = await Order.findOneAndUpdate(
       { _id: req.params.id, status: 'searching' },
       { $set: { riderId: req.user._id, status: 'assigned', riderAssignedAt: new Date() } },
       { new: true }
     ).populate('customerId', 'name phone fcmToken expoPushToken');
 
-    // null aaya — order already gone
     if (!order) {
       const existing = await Order.findById(req.params.id).select('status riderId');
       if (!existing) return err(res, 'Order not found.', 404);
 
-      // Rider ne khud pehle accept kar rakha hai
       if (
         existing.status === 'assigned' &&
         existing.riderId?.toString() === req.user._id.toString()
       ) {
-        // CHANGED: added expoPushToken to populate
         const o  = await Order.findById(req.params.id).populate('customerId', 'name phone fcmToken expoPushToken');
         const ri = await Rider.findById(req.user._id).select('name phone vehicle profilePhoto rating');
         return ok(res, { order: o, rider: ri }, 'Order already accepted by you.');
       }
 
-      // Kisi aur ne le liya
       const msgs = {
         assigned:   'This order was already accepted by another rider.',
         picked_up:  'This order has already been picked up.',
@@ -369,12 +381,10 @@ export async function acceptOrder(req, res, next) {
     const riderInfo = await Rider.findById(req.user._id).select('name phone vehicle profilePhoto rating');
     const eta       = Math.ceil(order.distanceMiles * 3);
 
-    // existing FCM — unchanged
     if (order.customerId.fcmToken) {
       notifyRiderFound(order.customerId.fcmToken, riderInfo.name, eta).catch(console.error);
     }
 
-    // NEW: Expo push → "🛵 Rider Assigned!" to customer
     if (order.customerId.expoPushToken) {
       pushRiderAssigned(order.customerId.expoPushToken, {
         riderName: riderInfo.name,
@@ -419,18 +429,15 @@ export async function uploadPickupPhoto(req, res, next) {
     order.pickedUpAt    = new Date();
     await order.save();
 
-    // CHANGED: added expoPushToken to populate
     await order.populate('customerId', 'fcmToken expoPushToken _id');
 
-    // existing FCM — unchanged
-    if (order.customerId.fcmToken) await notifyPickedUp(order.customerId.fcmToken).catch(console.error);
+    if (order.customerId.fcmToken)     notifyPickedUp(order.customerId.fcmToken).catch(console.error);
+    if (order.customerId.expoPushToken) pushParcelPickedUp(order.customerId.expoPushToken, { orderId: order._id }).catch(console.error);
 
-    // NEW: Expo push → "📦 Parcel Picked Up" to customer
-    if (order.customerId.expoPushToken) {
-      pushParcelPickedUp(order.customerId.expoPushToken, { orderId: order._id }).catch(console.error);
-    }
-
-    emitToUser(order.customerId._id.toString(), 'ride:picked_up', { orderId: order._id, message: 'Parcel has been picked up!' });
+    emitToUser(order.customerId._id.toString(), 'ride:picked_up', {
+      orderId: order._id,
+      message: 'Parcel has been picked up!',
+    });
 
     return ok(res, { status: order.status, pickupPhoto: order.pickupPhoto }, 'Pickup photo uploaded.');
   } catch (error) { next(error); }
@@ -446,19 +453,17 @@ export async function startTransit(req, res, next) {
     order.status = 'in_transit';
     await order.save();
 
-    // CHANGED: added expoPushToken to populate
     await order.populate('customerId', 'fcmToken expoPushToken _id');
     const eta = Math.ceil(order.distanceMiles * 2);
 
-    // existing FCM — unchanged
-    if (order.customerId.fcmToken) await notifyArriving(order.customerId.fcmToken, eta).catch(console.error);
+    if (order.customerId.fcmToken)     notifyArriving(order.customerId.fcmToken, eta).catch(console.error);
+    if (order.customerId.expoPushToken) pushOnTheWay(order.customerId.expoPushToken, { orderId: order._id, eta }).catch(console.error);
 
-    // NEW: Expo push → "🚗 Rider On The Way" to customer
-    if (order.customerId.expoPushToken) {
-      pushOnTheWay(order.customerId.expoPushToken, { orderId: order._id, eta }).catch(console.error);
-    }
-
-    emitToUser(order.customerId._id.toString(), 'ride:in_transit', { orderId: order._id, eta, message: `Rider heading to drop. ETA: ${eta} mins` });
+    emitToUser(order.customerId._id.toString(), 'ride:in_transit', {
+      orderId: order._id,
+      eta,
+      message: `Rider heading to drop. ETA: ${eta} mins`,
+    });
 
     return ok(res, { status: order.status }, 'Status updated to in_transit.');
   } catch (error) { next(error); }
@@ -477,7 +482,7 @@ export async function uploadDropPhoto(req, res, next) {
     await order.save();
     await order.populate('customerId', 'fcmToken _id');
 
-    if (order.customerId.fcmToken) await notifyArriving(order.customerId.fcmToken, 2).catch(console.error);
+    if (order.customerId.fcmToken) notifyArriving(order.customerId.fcmToken, 2).catch(console.error);
     emitToUser(order.customerId._id.toString(), 'ride:arrived', { orderId: order._id, message: 'Rider has arrived!' });
 
     return ok(res, { dropPhoto: order.dropPhoto }, 'Drop photo uploaded.');
@@ -493,8 +498,8 @@ export async function verifyDeliveryOTP(req, res, next) {
     const order = await Order.findOne({ _id: req.params.id, riderId: req.user._id });
     if (!order) return err(res, 'Order not found.', 404);
     if (order.status !== 'in_transit') return err(res, 'Order must be in_transit.', 400);
-    if (!order.dropPhoto?.url) return err(res, 'Drop photo must be uploaded first.', 400);
-    if (order.deliveryOTP !== otp) return err(res, 'Invalid OTP.', 400);
+    if (!order.dropPhoto?.url)         return err(res, 'Drop photo must be uploaded first.', 400);
+    if (order.deliveryOTP !== otp)     return err(res, 'Invalid OTP.', 400);
 
     const now           = new Date();
     order.otpVerified   = true;
@@ -504,22 +509,16 @@ export async function verifyDeliveryOTP(req, res, next) {
     order.paymentStatus = 'collected';
     await order.save();
 
-    const rider          = await Rider.findById(req.user._id);
-    rider.earnings.today = (rider.earnings.today || 0) + order.fare;
-    rider.earnings.total = (rider.earnings.total || 0) + order.fare;
-    rider.totalTrips     = (rider.totalTrips     || 0) + 1;
+    const rider           = await Rider.findById(req.user._id);
+    rider.earnings.today  = (rider.earnings.today || 0) + order.fare;
+    rider.earnings.total  = (rider.earnings.total || 0) + order.fare;
+    rider.totalTrips      = (rider.totalTrips     || 0) + 1;
     await rider.save();
 
-    // CHANGED: added expoPushToken to populate
     await order.populate('customerId', 'fcmToken expoPushToken _id name');
 
-    // existing FCM — unchanged
-    if (order.customerId.fcmToken) await notifyDelivered(order.customerId.fcmToken).catch(console.error);
-
-    // NEW: Expo push → "✅ Delivered!" to customer
-    if (order.customerId.expoPushToken) {
-      pushDelivered(order.customerId.expoPushToken, { orderId: order._id }).catch(console.error);
-    }
+    if (order.customerId.fcmToken)     notifyDelivered(order.customerId.fcmToken).catch(console.error);
+    if (order.customerId.expoPushToken) pushDelivered(order.customerId.expoPushToken, { orderId: order._id }).catch(console.error);
 
     emitToUser(order.customerId._id.toString(), 'ride:delivered', {
       orderId: order._id,
@@ -547,18 +546,15 @@ export async function cancelOrder(req, res, next) {
     await order.save();
 
     if (order.riderId) {
-      // CHANGED: added expoPushToken to .select()
       const rider = await Rider.findById(order.riderId).select('fcmToken expoPushToken _id');
       if (rider) {
-        // existing FCM — unchanged
-        if (rider.fcmToken) await notifyRiderOrderCancelled(rider.fcmToken, order._id.toString()).catch(console.error);
+        if (rider.fcmToken)     notifyRiderOrderCancelled(rider.fcmToken, order._id.toString()).catch(console.error);
+        if (rider.expoPushToken) pushOrderCancelledToRider(rider.expoPushToken, { orderId: order._id }).catch(console.error);
 
-        // NEW: Expo push → "❌ Order Cancelled" to rider
-        if (rider.expoPushToken) {
-          pushOrderCancelledToRider(rider.expoPushToken, { orderId: order._id }).catch(console.error);
-        }
-
-        emitToUser(rider._id.toString(), 'ride:cancelled', { orderId: order._id, message: 'Customer cancelled the order.' });
+        emitToUser(rider._id.toString(), 'ride:cancelled', {
+          orderId: order._id,
+          message: 'Customer cancelled the order.',
+        });
       }
     }
 
@@ -580,7 +576,7 @@ export async function getMyOrders(req, res, next) {
 export async function getOrder(req, res, next) {
   try {
     const { id } = req.params;
-    let order = null;
+    let order    = null;
 
     if (/^[a-f\d]{24}$/i.test(id)) {
       order = await Order.findById(id)
@@ -589,7 +585,7 @@ export async function getOrder(req, res, next) {
     } else if (id.length >= 6 && id.length <= 8) {
       const [result] = await Order.aggregate([
         { $addFields: { idStr: { $toLower: { $toString: '$_id' } } } },
-        { $match: { idStr: { $regex: id.toLowerCase() + '$' } } },
+        { $match:     { idStr: { $regex: id.toLowerCase() + '$' } } },
         { $limit: 1 },
       ]);
 
@@ -630,7 +626,8 @@ export async function getRiderLocation(req, res, next) {
   try {
     const order = await Order.findById(req.params.id).select('riderId status customerId').lean();
     if (!order) return err(res, 'Order not found.', 404);
-    if (req.role === 'customer' && order.customerId.toString() !== req.user._id.toString()) return err(res, 'Not authorized.', 403);
+    if (req.role === 'customer' && order.customerId.toString() !== req.user._id.toString())
+      return err(res, 'Not authorized.', 403);
     if (!order.riderId) return err(res, 'No rider assigned yet.', 404);
 
     const rider = await Rider.findById(order.riderId).select('currentLocation name vehicle').lean();
@@ -650,9 +647,9 @@ export async function submitDriverRating(req, res, next) {
     }
 
     const order = await Order.findOne({ _id: orderId, customerId: req.user._id, status: 'delivered' });
-    if (!order) return err(res, 'Order not found or not yet delivered.', 404);
+    if (!order)          return err(res, 'Order not found or not yet delivered.', 404);
     if (order.driverRating) return err(res, 'You have already rated this delivery.', 400);
-    if (!order.riderId) return err(res, 'No rider assigned to this order.', 404);
+    if (!order.riderId)  return err(res, 'No rider assigned to this order.', 404);
 
     order.driverRating = rating;
     order.driverReview = review?.trim() || '';
@@ -691,7 +688,7 @@ export async function deleteUserAccount(req, res, next) {
         isDeleted:     true,
         deletedAt:     new Date(),
         fcmToken:      null,
-        expoPushToken: null,  // NEW: clear Expo token on delete
+        expoPushToken: null,
       },
     });
     return ok(res, {}, 'Account deleted.');
@@ -714,7 +711,7 @@ export async function deleteRiderAccount(req, res, next) {
         isDeleted:     true,
         deletedAt:     new Date(),
         fcmToken:      null,
-        expoPushToken: null,  // NEW: clear Expo token on delete
+        expoPushToken: null,
         isOnline:      false,
         status:        'deleted',
       },
