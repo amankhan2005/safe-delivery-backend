@@ -36,6 +36,9 @@ export async function sendExpoPushNotifications(messages) {
       const data = res.data?.data ?? [];
       tickets.push(...data);
 
+      // DEBUG LOG — remove after testing
+      console.log('[ExpoPush] Ticket response:', JSON.stringify(data));
+
       // Auto-remove stale tokens
       for (let j = 0; j < data.length; j++) {
         if (data[j]?.status === 'error' && data[j]?.details?.error === 'DeviceNotRegistered') {
