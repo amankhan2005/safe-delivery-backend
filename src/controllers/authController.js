@@ -3,7 +3,7 @@ const { sign, verify } = pkg;
 
 import User  from '../models/userModel.js';
 import Rider from '../models/riderModel.js';
-import { generateOTP, saveOTP, verifyOTP, checkCooldown } from '../utils/otpGenerator.js';
+import { generateOTP, generatePhoneOTP, saveOTP, verifyOTP, checkCooldown } from '../utils/otpGenerator.js';
 import { normalizePhone, isValidLiberiaPhone } from '../utils/phoneNormalizer.js';
 import { findUserByIdentifier, findRiderByIdentifier } from '../utils/authHelpers.js';
 import { sendOTPEmail, sendWelcomeEmail, sendPasswordResetEmail } from '../services/emailService.js';
@@ -25,10 +25,6 @@ export async function signup(req, res, next) {
   try {
     let { name, phone, email, password } = req.body;
 
-    if (!name || !phone || !email || !password) {
-      return err(res, 'All fields are required.', 400);
-    }
-
     phone = normalizePhone(phone);
     if (!isValidLiberiaPhone(phone)) {
       return err(res, 'Invalid phone number. Only Liberia (+231) numbers are allowed.', 400);
@@ -36,14 +32,17 @@ export async function signup(req, res, next) {
 
     email = email.trim().toLowerCase();
 
-    if (await User.findOne({ phone })) return err(res, 'Phone number is already registered.', 400);
-    if (await User.findOne({ email })) return err(res, 'Email address is already registered.', 400);
+    // KEY FIX: exclude soft-deleted users from duplicate checks
+    if (await User.findOne({ phone, isDeleted: { $ne: true } }))
+      return err(res, 'Phone number is already registered.', 400);
+    if (await User.findOne({ email, isDeleted: { $ne: true } }))
+      return err(res, 'Email address is already registered.', 400);
+    if (await Rider.findOne({ phone, isDeleted: { $ne: true } }))
+      return err(res, 'Phone number is already registered.', 400);
 
-    // Store temp — NO DB write yet
     saveTempSignup(phone, email, { name, phone, email, password }, 'user');
     console.log('[Signup] Temp stored for phone:', phone, 'email:', email);
 
-    // Send email OTP
     const otp = generateOTP();
     await saveOTP(email, otp, 'signup_email');
 
@@ -55,9 +54,9 @@ export async function signup(req, res, next) {
     }
 
     return ok(res, {
-      message: 'Signup initiated.',
+      message:   'Signup initiated.',
       emailSent: true,
-      hint: 'Verify phone via SMS OTP or use Email OTP to complete signup.',
+      hint:      'Verify phone via SMS OTP or use Email OTP to complete signup.',
     }, 'Signup initiated. Verify to create your account.', 201);
 
   } catch (error) {
@@ -65,7 +64,6 @@ export async function signup(req, res, next) {
   }
 }
 
-// ── NEW: Send phone OTP via Twilio SMS ────────────────────────────────────────
 export async function sendPhoneOTPHandler(req, res, next) {
   try {
     const { phone: rawPhone } = req.body;
@@ -76,19 +74,18 @@ export async function sendPhoneOTPHandler(req, res, next) {
       return err(res, 'Invalid phone number. Only Liberia (+231) numbers are allowed.', 400);
     }
 
-    // Check cooldown
     const cooldown = await checkCooldown(phone, 'phone');
     if (!cooldown.canResend) {
       return err(res, `Please wait ${cooldown.secondsLeft} seconds before resending.`, 429);
     }
 
-    // Verify temp signup session exists
     const temp = getTempSignup(phone);
     if (!temp) {
-      return err(res, 'Signup session expired. Please start over.', 400);
+      return err(res, 'Signup session expired. Please start signup again.', 400);
     }
 
-    const otp = generateOTP();
+    // KEY FIX: use generatePhoneOTP() for 6-digit SMS code
+    const otp = generatePhoneOTP();
     await saveOTP(phone, otp, 'phone');
 
     try {
@@ -105,7 +102,6 @@ export async function sendPhoneOTPHandler(req, res, next) {
   }
 }
 
-// ── CHANGED: verifyPhoneOTP now uses Twilio OTP (not Firebase) ───────────────
 export async function verifyPhoneOTP(req, res, next) {
   try {
     const { phone: rawPhone, otp } = req.body;
@@ -117,26 +113,23 @@ export async function verifyPhoneOTP(req, res, next) {
     const phone = normalizePhone(rawPhone);
     console.log('[VerifyPhone] Attempting for phone:', phone);
 
-    // Verify OTP from DB
     const result = await verifyOTP(phone, otp, 'phone');
     if (!result.success) {
       return err(res, result.message, result.blocked ? 429 : 400);
     }
 
-    // Get temp signup data
     const temp = getTempSignup(phone);
     if (!temp) {
-      return err(res, 'Signup session expired. Please start over.', 400);
+      return err(res, 'Signup session expired. Please start signup again.', 400);
     }
 
     const { name, email, password } = temp.data;
 
-    // Final duplicate checks before creating user
-    if (await User.findOne({ phone })) {
+    if (await User.findOne({ phone, isDeleted: { $ne: true } })) {
       deleteTempSignup(phone, email);
       return err(res, 'Phone already registered.', 400);
     }
-    if (await User.findOne({ email })) {
+    if (await User.findOne({ email, isDeleted: { $ne: true } })) {
       deleteTempSignup(phone, email);
       return err(res, 'Email already registered.', 400);
     }
@@ -145,6 +138,7 @@ export async function verifyPhoneOTP(req, res, next) {
       name, phone, email, password,
       isPhoneVerified: true,
       isEmailVerified: false,
+      isDeleted: false,
     });
     deleteTempSignup(phone, email);
     console.log('[VerifyPhone] User created:', user._id, 'phone:', phone);
@@ -179,17 +173,17 @@ export async function verifyEmailOTP(req, res, next) {
 
     const temp = getTempSignup(email) || (phone ? getTempSignup(phone) : null);
     if (!temp) {
-      return err(res, 'Signup session expired. Please start over.', 400);
+      return err(res, 'Signup session expired. Please start signup again.', 400);
     }
 
     const { name, phone: storedPhone, password } = temp.data;
     const finalPhone = storedPhone || phone;
 
-    if (await User.findOne({ phone: finalPhone })) {
+    if (await User.findOne({ phone: finalPhone, isDeleted: { $ne: true } })) {
       deleteTempSignup(finalPhone, email);
       return err(res, 'Phone already registered.', 400);
     }
-    if (await User.findOne({ email })) {
+    if (await User.findOne({ email, isDeleted: { $ne: true } })) {
       deleteTempSignup(finalPhone, email);
       return err(res, 'Email already registered.', 400);
     }
@@ -198,6 +192,7 @@ export async function verifyEmailOTP(req, res, next) {
       name, phone: finalPhone, email, password,
       isPhoneVerified: false,
       isEmailVerified: true,
+      isDeleted: false,
     });
     deleteTempSignup(finalPhone, email);
     console.log('[VerifyEmail] User created:', user._id, 'email:', email);
@@ -252,7 +247,7 @@ export async function login(req, res, next) {
     const { identifier, password } = req.body;
 
     const user = await findUserByIdentifier(identifier, true);
-    if (!user || !(await user.matchPassword(password))) {
+    if (!user || user.isDeleted || !(await user.matchPassword(password))) {
       return err(res, 'Invalid credentials.', 401);
     }
 
@@ -262,8 +257,7 @@ export async function login(req, res, next) {
 
     if (user.isFirstLogin) {
       await sendWelcomeEmail(user.email, user.name).catch(console.error);
-      user.isFirstLogin = false;
-      await user.save();
+      await User.findByIdAndUpdate(user._id, { isFirstLogin: false });
     }
 
     const token = signToken(user._id, user.role);
@@ -282,7 +276,7 @@ export async function forgotPassword(req, res, next) {
     if (!rawEmail) return err(res, 'Email is required.', 400);
 
     const email = rawEmail.trim().toLowerCase();
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email, isDeleted: { $ne: true } });
     if (!user) return err(res, 'No account found with this email.', 404);
 
     const cooldown = await checkCooldown(email, 'reset');
@@ -311,7 +305,7 @@ export async function resendForgotOTP(req, res, next) {
     if (!rawEmail) return err(res, 'Email is required.', 400);
 
     const email = rawEmail.trim().toLowerCase();
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email, isDeleted: { $ne: true } });
     if (!user) return err(res, 'No account found with this email.', 404);
 
     const cooldown = await checkCooldown(email, 'reset');
@@ -333,7 +327,7 @@ export async function verifyResetOTP(req, res, next) {
     if (!rawEmail || !otp) return err(res, 'email and otp are required.', 400);
 
     const email = rawEmail.trim().toLowerCase();
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email, isDeleted: { $ne: true } });
     if (!user) return err(res, 'No account found.', 404);
 
     const result = await verifyOTP(email, otp, 'reset');
@@ -398,8 +392,7 @@ export async function saveFcmToken(req, res, next) {
   try {
     const { fcmToken } = req.body;
     if (!fcmToken) return err(res, 'fcmToken is required.', 400);
-    req.user.fcmToken = fcmToken;
-    await req.user.save();
+    await User.findByIdAndUpdate(req.user._id, { fcmToken });
     return ok(res, {}, 'FCM token saved.');
   } catch (error) {
     next(error);
@@ -421,14 +414,16 @@ export async function riderSignup(req, res, next) {
 
     const email = rawEmail.trim().toLowerCase();
 
-    if (await Rider.findOne({ phone })) return err(res, 'Phone number is already registered.', 400);
-    if (await Rider.findOne({ email })) return err(res, 'Email address is already registered.', 400);
+    if (await Rider.findOne({ phone, isDeleted: { $ne: true } }))
+      return err(res, 'Phone number is already registered.', 400);
+    if (await Rider.findOne({ email, isDeleted: { $ne: true } }))
+      return err(res, 'Email address is already registered.', 400);
 
     saveTempSignup(phone, email, {
       name, phone, email, password,
       selfie: {
-        url:       req.file.path,
-        publicId:  req.file.filename,
+        url:        req.file.path,
+        publicId:   req.file.filename,
         capturedAt: new Date(),
       },
     }, 'rider');
@@ -445,9 +440,9 @@ export async function riderSignup(req, res, next) {
     }
 
     return ok(res, {
-      message: 'Rider signup initiated.',
+      message:   'Rider signup initiated.',
       emailSent: true,
-      hint: 'Verify phone via SMS OTP or use Email OTP to complete signup.',
+      hint:      'Verify phone via SMS OTP or use Email OTP to complete signup.',
     }, 'Rider signup initiated. Verify to create your account.', 201);
 
   } catch (error) {
@@ -455,7 +450,6 @@ export async function riderSignup(req, res, next) {
   }
 }
 
-// ── NEW: Send rider phone OTP via Twilio ──────────────────────────────────────
 export async function riderSendPhoneOTP(req, res, next) {
   try {
     const { phone: rawPhone } = req.body;
@@ -473,10 +467,10 @@ export async function riderSendPhoneOTP(req, res, next) {
 
     const temp = getTempSignup(phone);
     if (!temp) {
-      return err(res, 'Rider signup session expired. Please start over.', 400);
+      return err(res, 'Rider signup session expired. Please start signup again.', 400);
     }
 
-    const otp = generateOTP();
+    const otp = generatePhoneOTP();
     await saveOTP(phone, otp, 'phone');
 
     try {
@@ -493,7 +487,6 @@ export async function riderSendPhoneOTP(req, res, next) {
   }
 }
 
-// ── CHANGED: riderVerifyPhoneOTP now accepts otp instead of firebaseIdToken ───
 export async function riderVerifyPhoneOTP(req, res, next) {
   try {
     const { phone: rawPhone, otp } = req.body;
@@ -511,17 +504,24 @@ export async function riderVerifyPhoneOTP(req, res, next) {
     }
 
     const temp = getTempSignup(phone);
-    if (!temp) return err(res, 'Rider signup session expired. Please start over.', 400);
+    if (!temp) return err(res, 'Rider signup session expired. Please start signup again.', 400);
 
     const { name, email, password, selfie } = temp.data;
 
-    if (await Rider.findOne({ phone })) { deleteTempSignup(phone, email); return err(res, 'Phone already registered.', 400); }
-    if (await Rider.findOne({ email })) { deleteTempSignup(phone, email); return err(res, 'Email already registered.', 400); }
+    if (await Rider.findOne({ phone, isDeleted: { $ne: true } })) {
+      deleteTempSignup(phone, email);
+      return err(res, 'Phone already registered.', 400);
+    }
+    if (await Rider.findOne({ email, isDeleted: { $ne: true } })) {
+      deleteTempSignup(phone, email);
+      return err(res, 'Email already registered.', 400);
+    }
 
     const rider = await Rider.create({
       name, phone, email, password, selfie,
       isPhoneVerified: true,
       isEmailVerified: false,
+      isDeleted: false,
     });
     deleteTempSignup(phone, email);
     console.log('[RiderVerifyPhone] Rider created:', rider._id);
@@ -551,18 +551,25 @@ export async function riderVerifyEmailOTP(req, res, next) {
     if (!result.success) return err(res, result.message, result.blocked ? 429 : 400);
 
     const temp = getTempSignup(email) || (phone ? getTempSignup(phone) : null);
-    if (!temp) return err(res, 'Rider signup session expired. Please start over.', 400);
+    if (!temp) return err(res, 'Rider signup session expired. Please start signup again.', 400);
 
     const { name, phone: storedPhone, password, selfie } = temp.data;
     const finalPhone = storedPhone || phone;
 
-    if (await Rider.findOne({ phone: finalPhone })) { deleteTempSignup(finalPhone, email); return err(res, 'Phone already registered.', 400); }
-    if (await Rider.findOne({ email })) { deleteTempSignup(finalPhone, email); return err(res, 'Email already registered.', 400); }
+    if (await Rider.findOne({ phone: finalPhone, isDeleted: { $ne: true } })) {
+      deleteTempSignup(finalPhone, email);
+      return err(res, 'Phone already registered.', 400);
+    }
+    if (await Rider.findOne({ email, isDeleted: { $ne: true } })) {
+      deleteTempSignup(finalPhone, email);
+      return err(res, 'Email already registered.', 400);
+    }
 
     const rider = await Rider.create({
       name, phone: finalPhone, email, password, selfie,
       isPhoneVerified: false,
       isEmailVerified: true,
+      isDeleted: false,
     });
     deleteTempSignup(finalPhone, email);
     console.log('[RiderVerifyEmail] Rider created:', rider._id);
@@ -613,14 +620,15 @@ export async function riderLogin(req, res, next) {
     const { identifier, password } = req.body;
 
     const rider = await findRiderByIdentifier(identifier, true);
-    if (!rider || !(await rider.matchPassword(password))) return err(res, 'Invalid credentials.', 401);
+    if (!rider || rider.isDeleted || !(await rider.matchPassword(password)))
+      return err(res, 'Invalid credentials.', 401);
 
     if (!rider.isPhoneVerified && !rider.isEmailVerified) {
       return err(res, 'Please verify your phone or email first.', 403);
     }
 
-    if (rider.status === 'banned')    return err(res, 'Your account has been banned.', 403);
-    if (rider.status === 'rejected')  return err(res, 'Your application was rejected.', 403);
+    if (rider.status === 'banned')   return err(res, 'Your account has been banned.', 403);
+    if (rider.status === 'rejected') return err(res, 'Your application was rejected.', 403);
 
     const token = signToken(rider._id, 'rider');
     return ok(res, {
@@ -638,7 +646,7 @@ export async function riderForgotPassword(req, res, next) {
     if (!rawEmail) return err(res, 'Email is required.', 400);
 
     const email = rawEmail.trim().toLowerCase();
-    const rider = await Rider.findOne({ email });
+    const rider = await Rider.findOne({ email, isDeleted: { $ne: true } });
     if (!rider) return err(res, 'No rider account found with this email.', 404);
 
     const cooldown = await checkCooldown(email, 'reset');
@@ -649,7 +657,6 @@ export async function riderForgotPassword(req, res, next) {
 
     try {
       await sendPasswordResetEmail(rider.email, rider.name, otp);
-      console.log('[RiderForgotPassword] Reset OTP sent to:', email);
     } catch (e) {
       console.error('[RiderForgotPassword] Email failed:', e.message);
       return err(res, 'Failed to send reset email.', 500);
@@ -667,7 +674,7 @@ export async function riderResendForgotOTP(req, res, next) {
     if (!rawEmail) return err(res, 'Email is required.', 400);
 
     const email = rawEmail.trim().toLowerCase();
-    const rider = await Rider.findOne({ email });
+    const rider = await Rider.findOne({ email, isDeleted: { $ne: true } });
     if (!rider) return err(res, 'No rider account found.', 404);
 
     const cooldown = await checkCooldown(email, 'reset');
@@ -689,7 +696,7 @@ export async function riderVerifyResetOTP(req, res, next) {
     if (!rawEmail || !otp) return err(res, 'email and otp are required.', 400);
 
     const email = rawEmail.trim().toLowerCase();
-    const rider = await Rider.findOne({ email });
+    const rider = await Rider.findOne({ email, isDeleted: { $ne: true } });
     if (!rider) return err(res, 'Rider not found.', 404);
 
     const result = await verifyOTP(email, otp, 'reset');
@@ -744,7 +751,6 @@ export async function riderChangePassword(req, res, next) {
   }
 }
 
-// ─── DELETE ACCOUNT — Customer ────────────────────────────────────────────────
 export async function deleteUserAccount(req, res, next) {
   try {
     const { password } = req.body;
@@ -757,28 +763,29 @@ export async function deleteUserAccount(req, res, next) {
     const isMatch = await user.matchPassword(password);
     if (!isMatch) return err(res, 'Incorrect password. Account not deleted.', 401);
 
+    const id = req.user._id.toString();
     await User.findByIdAndUpdate(req.user._id, {
       $set: {
         name:            'Deleted User',
-        email:           `deleted_${req.user._id}@deleted.invalid`,
-        phone:           `deleted_${req.user._id}`,
+        email:           `deleted_${id}_${Date.now()}@deleted.invalid`,
+        phone:           `deleted_${id}_${Date.now()}`,
         isDeleted:       true,
         deletedAt:       new Date(),
         fcmToken:        null,
+        expoPushToken:   null,
         isPhoneVerified: false,
         isEmailVerified: false,
         password:        'DELETED',
       }
     });
 
-    console.log(`[DeleteAccount] Customer ${req.user._id} deleted their account.`);
+    console.log(`[DeleteAccount] Customer ${id} deleted their account.`);
     return ok(res, {}, 'Account deleted successfully. All your data has been removed.');
   } catch (error) {
     next(error);
   }
 }
 
-// ─── DELETE ACCOUNT — Rider ───────────────────────────────────────────────────
 export async function deleteRiderAccount(req, res, next) {
   try {
     const { password } = req.body;
@@ -791,11 +798,12 @@ export async function deleteRiderAccount(req, res, next) {
     const isMatch = await rider.matchPassword(password);
     if (!isMatch) return err(res, 'Incorrect password. Account not deleted.', 401);
 
+    const id = req.user._id.toString();
     await Rider.findByIdAndUpdate(req.user._id, {
       $set: {
         name:      'Deleted Rider',
-        email:     `deleted_rider_${req.user._id}@deleted.invalid`,
-        phone:     `deleted_rider_${req.user._id}`,
+        email:     `deleted_rider_${id}_${Date.now()}@deleted.invalid`,
+        phone:     `deleted_rider_${id}_${Date.now()}`,
         isDeleted: true,
         deletedAt: new Date(),
         fcmToken:  null,
@@ -805,7 +813,7 @@ export async function deleteRiderAccount(req, res, next) {
       }
     });
 
-    console.log(`[DeleteAccount] Rider ${req.user._id} deleted their account.`);
+    console.log(`[DeleteAccount] Rider ${id} deleted their account.`);
     return ok(res, {}, 'Rider account deleted successfully.');
   } catch (error) {
     next(error);

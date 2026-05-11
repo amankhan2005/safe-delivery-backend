@@ -48,14 +48,17 @@ const userSchema = new mongoose.Schema(
     isEmailVerified: { type: Boolean, default: false },
     isFirstLogin:    { type: Boolean, default: true },
     fcmToken:        { type: String,  default: null },
-    expoPushToken:   { type: String,  default: null }, // ← NEW: Expo push notifications
+    expoPushToken:   { type: String,  default: null },
     savedAddresses:  [savedAddressSchema],
-    totalOrders:     { type: Number, default: 0 },
+    totalOrders:     { type: Number,  default: 0 },
+
+    // Soft delete — REQUIRED so deleted users don't block new signups
+    isDeleted: { type: Boolean, default: false, index: true },
+    deletedAt: { type: Date,    default: null },
   },
   { timestamps: true }
 );
 
-// hash password
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();
   const salt = await genSalt(12);
@@ -63,7 +66,6 @@ userSchema.pre('save', async function (next) {
   next();
 });
 
-// compare password
 userSchema.methods.matchPassword = async function (enteredPassword) {
   return await compare(enteredPassword, this.password);
 };

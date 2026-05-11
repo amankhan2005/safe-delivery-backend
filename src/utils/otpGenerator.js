@@ -1,20 +1,26 @@
 import OTP from '../models/otpModel.js';
 
+// 4-digit OTP for email verification
 export const generateOTP = () => {
-  return Math.floor(1000 + Math.random() * 9000).toString();
+  return String(Math.floor(1000 + Math.random() * 9000));
+};
+
+// 6-digit OTP for SMS/phone verification via Twilio
+export const generatePhoneOTP = () => {
+  return String(Math.floor(100000 + Math.random() * 900000));
 };
 
 export const saveOTP = async (identifier, otp, type) => {
   await OTP.deleteMany({ identifier, type });
 
-  const expiryMinutes = parseInt(process.env.OTP_EXPIRY_MINUTES) || 5; // 5 min default
+  const expiryMinutes = parseInt(process.env.OTP_EXPIRY_MINUTES) || 10;
   const expiresAt = new Date(Date.now() + expiryMinutes * 60 * 1000);
 
   return await OTP.create({ identifier, otp, type, expiresAt });
 };
 
 export const verifyOTP = async (identifier, otp, type) => {
-  const maxAttempts = parseInt(process.env.OTP_MAX_ATTEMPTS) || 3;
+  const maxAttempts = parseInt(process.env.OTP_MAX_ATTEMPTS) || 5;
 
   const otpDoc = await OTP.findOne({ identifier, type });
 
@@ -22,18 +28,24 @@ export const verifyOTP = async (identifier, otp, type) => {
 
   if (new Date() > otpDoc.expiresAt) {
     await OTP.deleteOne({ _id: otpDoc._id });
-    return { success: false, message: 'OTP expired.' };
+    return { success: false, message: 'OTP has expired. Please request a new one.' };
   }
 
   if (otpDoc.attempts >= maxAttempts) {
     await OTP.deleteOne({ _id: otpDoc._id });
-    return { success: false, message: 'Too many attempts.', blocked: true };
+    return { success: false, message: 'Too many failed attempts. Please request a new OTP.', blocked: true };
   }
 
-  if (otpDoc.otp !== otp) {
+  if (String(otpDoc.otp).trim() !== String(otp).trim()) {
     otpDoc.attempts += 1;
     await otpDoc.save();
-    return { success: false, message: 'Invalid OTP.' };
+    const remaining = maxAttempts - otpDoc.attempts;
+    return {
+      success: false,
+      message: remaining > 0
+        ? `Invalid OTP. ${remaining} attempt${remaining === 1 ? '' : 's'} remaining.`
+        : 'Too many failed attempts. Please request a new OTP.',
+    };
   }
 
   await OTP.deleteOne({ _id: otpDoc._id });
