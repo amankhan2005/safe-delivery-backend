@@ -222,7 +222,7 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   httpServer.keepAliveTimeout = 120_000;
   httpServer.headersTimeout   = 121_000;
 
-  console.log(`\n🚀 Safe Ride Delivery API is running on port ${PORT}`);
+  console.log(`\n🚀 Safe Ride Delivery Backend API is running on port ${PORT}`);
   console.log(`📍 Mode: ${process.env.NODE_ENV}`);
   console.log(`🏥 Health: http://localhost:${PORT}/health\n`);
 });
