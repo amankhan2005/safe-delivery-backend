@@ -321,6 +321,5 @@ rider.profilePhoto = { url: req.file.path, publicId: req.file.filename };
 await rider.save();
 return ok(res, { profilePhoto: rider.profilePhoto }, 'Profile photo updated.');
 
-
 } catch (error) { next(error); }
 }
