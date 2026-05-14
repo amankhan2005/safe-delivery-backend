@@ -1,4 +1,4 @@
-import ‘dotenv/config’;
+import 'dotenv/config';
 import express, { json, urlencoded } from ‘express’;
 import { createServer } from ‘http’;
 import helmet from ‘helmet’;
@@ -213,7 +213,7 @@ await connectDB();
 initializeFirebase();
 initSocket(httpServer);
 
-```
+
 const PORT = parseInt(process.env.PORT || '5000', 10);
 
 httpServer.listen(PORT, '0.0.0.0', () => {
@@ -226,7 +226,7 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`📍 Mode: ${process.env.NODE_ENV}`);
   console.log(`🏥 Health: http://localhost:${PORT}/health\n`);
 });
-```
+
 
 } catch (error) {
 console.error(‘Server start failed:’, error.message);
