@@ -19,7 +19,7 @@ try {
 const body = req.body ?? {};
 const dob  = typeof body.dob === ‘string’ ? body.dob.trim() : ‘’;
 
-```
+
 if (!dob) {
   return err(res, 'Date of birth is required.', 400);
 }
@@ -51,7 +51,7 @@ rider.kycStep = 2;
 await rider.save();
 
 return ok(res, { kycStep: rider.kycStep }, 'Step 1 saved. Proceed to document upload.');
-```
+
 
 } catch (error) { next(error); }
 }
@@ -62,7 +62,7 @@ const files = req.files;
 if (!files?.govtIdFront || !files?.govtIdBack || !files?.license || !files?.rcBook)
 return err(res, ‘All 4 documents are required: govtIdFront, govtIdBack, license, rcBook.’, 400);
 
-```
+
 const rider = await Rider.findById(req.user._id);
 if (!rider) return err(res, 'Rider not found.', 404);
 
@@ -75,7 +75,7 @@ rider.documents = {
 rider.kycStep = 3;
 await rider.save();
 return ok(res, { kycStep: rider.kycStep }, 'Documents uploaded. Proceed to vehicle info.');
-```
+
 
 } catch (error) { next(error); }
 }
@@ -85,7 +85,7 @@ try {
 const body = req.body ?? {};
 const { type, plate, model, color } = body;
 
-```
+
 const validTypes = ['motorcycle', 'bicycle', 'car'];
 if (!type || !validTypes.includes(type))
   return err(res, `Vehicle type must be one of: ${validTypes.join(', ')}.`, 400);
@@ -104,7 +104,7 @@ const admins = await User.find({ role: 'admin', fcmToken: { $ne: null } });
 for (const admin of admins) await notifyAdminNewRider(admin.fcmToken).catch(console.error);
 
 return ok(res, { status: rider.status, kycCompleted: rider.kycCompleted }, 'KYC complete. Your application is under review.');
-```
+
 
 } catch (error) { next(error); }
 }
@@ -124,7 +124,6 @@ const rider = await Rider.findById(req.user._id);
 if (rider.status !== ‘approved’)
 return err(res, ‘You must be approved to go online.’, 403);
 
-```
 // Security: prevent going offline mid-delivery
 if (rider.isOnline) {
   const activeOrder = await Order.findOne({ riderId: rider._id, status: { $in: ACTIVE_STATUSES } }).select('_id status').lean();
@@ -135,7 +134,7 @@ if (rider.isOnline) {
 rider.isOnline = !rider.isOnline;
 await rider.save();
 return ok(res, { isOnline: rider.isOnline }, `You are now ${rider.isOnline ? 'online' : 'offline'}.`);
-```
+
 
 } catch (error) { next(error); }
 }
@@ -159,7 +158,7 @@ const { lat, lng, orderId } = req.body ?? {};
 if (lat === undefined || lng === undefined)
 return err(res, ‘lat and lng are required.’, 400);
 
-```
+
 await Rider.findByIdAndUpdate(req.user._id, {
   currentLocation: { lat: parseFloat(lat), lng: parseFloat(lng) },
 });
@@ -181,7 +180,7 @@ if (orderId) {
 }
 
 return ok(res, {}, 'Location updated.');
-```
+
 
 } catch (error) { next(error); }
 }
@@ -195,7 +194,7 @@ const riderId = req.user._id;
 const now     = new Date();
 let startDate;
 
-```
+
 if (period === 'daily') {
   startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 } else if (period === 'monthly') {
@@ -223,7 +222,7 @@ return ok(res, {
   allTimeEarnings: rider.earnings,
   orders,
 }, 'Earnings fetched.');
-```
+
 
 } catch (error) { next(error); }
 }
@@ -241,7 +240,7 @@ try {
 const rider = await Rider.findById(req.user._id).select(‘isOnline status’).lean();
 if (!rider) return err(res, ‘Rider not found.’, 404);
 
-```
+
 // Run active order + history queries in parallel
 const [activeOrder, historyOrders] = await Promise.all([
   Order.findOne({ riderId: req.user._id, status: { $in: ACTIVE_STATUSES } })
@@ -275,7 +274,7 @@ return ok(res, {
   activeOrder:  activeOrder || null,     // ← KEY FIELD for client state recovery
   orders:       [...searchingOrders, ...historyOrders],
 }, 'Orders fetched.');
-```
+
 
 } catch (error) { next(error); }
 }
@@ -297,12 +296,12 @@ if (name)  updates.name  = name.trim();
 if (email) updates.email = email.toLowerCase().trim();
 if (dob)   updates.dob   = dob;
 
-```
+
 const rider = await Rider.findByIdAndUpdate(req.user._id, updates, {
   new: true, runValidators: true,
 }).select('-password');
 return ok(res, { rider }, 'Profile updated.');
-```
+
 
 } catch (error) { next(error); }
 }
@@ -312,7 +311,7 @@ try {
 if (!req.file) return err(res, ‘Profile photo is required.’, 400);
 const rider = await Rider.findById(req.user._id);
 
-```
+
 if (rider.profilePhoto?.publicId) {
   const { cloudinary } = cloudinaryConfig;
   await cloudinary.uploader.destroy(rider.profilePhoto.publicId).catch(console.error);
@@ -321,7 +320,7 @@ if (rider.profilePhoto?.publicId) {
 rider.profilePhoto = { url: req.file.path, publicId: req.file.filename };
 await rider.save();
 return ok(res, { profilePhoto: rider.profilePhoto }, 'Profile photo updated.');
-```
+
 
 } catch (error) { next(error); }
 }
