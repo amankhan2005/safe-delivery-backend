@@ -1,71 +1,97 @@
-import { createRequire } from 'module';
-const require = createRequire(import.meta.url);
-const twilio  = require('twilio');
+import axios from 'axios';
 
-let _client = null;
+async function sendWhatsAppMessage(to, messageBody) {
+  const accessToken   = (process.env.WHATSAPP_ACCESS_TOKEN    || '').trim();
+  const phoneNumberId = (process.env.WHATSAPP_PHONE_NUMBER_ID || '').trim();
 
-function getClient() {
-  if (_client) return _client;
-  const sid   = (process.env.TWILIO_ACCOUNT_SID  || '').trim();
-  const token = (process.env.TWILIO_AUTH_TOKEN    || '').trim();
-  if (!sid || !token) {
-    throw new Error('[Twilio] TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN missing in .env');
-  }
-  _client = twilio(sid, token);
-  return _client;
+  if (!accessToken)   throw new Error('[WhatsApp] WHATSAPP_ACCESS_TOKEN missing in .env');
+  if (!phoneNumberId) throw new Error('[WhatsApp] WHATSAPP_PHONE_NUMBER_ID missing in .env');
+
+  const { data } = await axios.post(
+    `https://graph.facebook.com/v19.0/${phoneNumberId}/messages`,
+    {
+      messaging_product: 'whatsapp',
+      recipient_type:    'individual',
+      to,
+      ...messageBody,
+    },
+    {
+      headers: {
+        Authorization:  `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000,
+    }
+  );
+
+  return data;
 }
 
-/**
- * Send OTP SMS via Twilio
- * @param {string} to   - E.164 phone e.g. +2310770123456
- * @param {string} otp  - 6-digit code
- */
 export async function sendPhoneOTP(to, otp) {
-  const client = getClient();
-  const from   = (process.env.TWILIO_PHONE_NUMBER || '').trim();
+  const expiryMinutes = (process.env.OTP_EXPIRY_MINUTES        || '5').trim();
+  const templateName  = (process.env.WHATSAPP_OTP_TEMPLATE_NAME || 'otp_verification').trim();
+  const templateLang  = (process.env.WHATSAPP_OTP_TEMPLATE_LANG || 'en_US').trim();
 
-  if (!from) throw new Error('[Twilio] TWILIO_PHONE_NUMBER missing in .env');
+  try {
+    const result = await sendWhatsAppMessage(to, {
+      type: 'template',
+      template: {
+        name:     templateName,
+        language: { code: templateLang },
+        components: [
+          {
+            type:       'body',
+            parameters: [
+              { type: 'text', text: String(otp)           },
+              { type: 'text', text: String(expiryMinutes) },
+            ],
+          },
+        ],
+      },
+    });
+    console.log(`[WhatsApp OTP] Sent to ${to} | WAMID: ${result?.messages?.[0]?.id}`);
+    return result?.messages?.[0]?.id;
+  } catch (templateErr) {
+    console.warn(`[WhatsApp OTP] Template failed (${templateErr.message}) — trying text fallback`);
+  }
 
-  const message = await client.messages.create({
-    to,
-    from,
-    body: `Your Safe Delivery verification code is: ${otp}. Valid for ${process.env.OTP_EXPIRY_MINUTES || 10} minutes. Do not share this code.`,
+  const result = await sendWhatsAppMessage(to, {
+    type: 'text',
+    text: {
+      preview_url: false,
+      body: `Your Safe Delivery verification code is: *${otp}*\nValid for ${expiryMinutes} minutes. Do not share this code.`,
+    },
   });
-
-  console.log(`[Twilio SMS] Sent to ${to} | SID: ${message.sid} | Status: ${message.status}`);
-  return message.sid;
+  console.log(`[WhatsApp OTP] Text fallback sent to ${to} | WAMID: ${result?.messages?.[0]?.id}`);
+  return result?.messages?.[0]?.id;
 }
-
-// ── Non-OTP approval/rejection SMS (preserved) ───────────────────────────────
 
 export const sendApprovalSms = async (phone, name) => {
   try {
-    const client = getClient();
-    const from   = (process.env.TWILIO_PHONE_NUMBER || '').trim();
-    if (!from) { console.warn('[SMS] TWILIO_PHONE_NUMBER not set'); return; }
-    await client.messages.create({
-      to: phone,
-      from,
-      body: `Hello ${name}, your Safe Delivery rider account has been approved! You can now start accepting orders.`,
+    await sendWhatsAppMessage(phone, {
+      type: 'text',
+      text: {
+        preview_url: false,
+        body: `Hello ${name}! 🎉 Your Safe Delivery rider account has been *approved*. You can now log in and start accepting orders.`,
+      },
     });
-    console.log(`[Twilio SMS] Approval sent to ${phone}`);
+    console.log(`[WhatsApp] Approval sent to ${phone}`);
   } catch (e) {
-    console.error(`[Twilio SMS] Approval failed for ${phone}:`, e.message);
+    console.error(`[WhatsApp] Approval failed for ${phone}:`, e.message);
   }
 };
 
 export const sendRejectionSms = async (phone, reason) => {
   try {
-    const client = getClient();
-    const from   = (process.env.TWILIO_PHONE_NUMBER || '').trim();
-    if (!from) { console.warn('[SMS] TWILIO_PHONE_NUMBER not set'); return; }
-    await client.messages.create({
-      to: phone,
-      from,
-      body: `Your Safe Delivery rider application was not approved. Reason: ${reason}. Please contact support for help.`,
+    await sendWhatsAppMessage(phone, {
+      type: 'text',
+      text: {
+        preview_url: false,
+        body: `Hello! Your Safe Delivery rider application was not approved.\n\n*Reason:* ${reason}\n\nPlease contact support for assistance.`,
+      },
     });
-    console.log(`[Twilio SMS] Rejection sent to ${phone}`);
+    console.log(`[WhatsApp] Rejection sent to ${phone}`);
   } catch (e) {
-    console.error(`[Twilio SMS] Rejection failed for ${phone}:`, e.message);
+    console.error(`[WhatsApp] Rejection failed for ${phone}:`, e.message);
   }
 };
